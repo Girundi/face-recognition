@@ -28,15 +28,31 @@ def boxes(img_arr, predictions, headcount=False, faces_on=False):
 def emotion_boxes(img_arr, predictions, headcount=False, faces_on=False):
     emotions_lapse = []
     out_arr = []
-    for img, pred in zip(img_arr, predictions):
+    if img_arr is not None:
+        for img, pred in zip(img_arr, predictions):
+            buf = np.zeros(7)
+            for p in pred:
+                buf = np.add(buf, p[0])
+            emotions_lapse.append(buf)
+            img = augment_frame(img, emotions_lapse, len(pred), len(img_arr), faces_on)
+            if headcount:
+                cv2.putText(img, "Head count: " + str(len(pred)),
+                            (5, 30), cv2.FONT_HERSHEY_TRIPLEX, 1, (60, 20, 220))
+            out_arr.append(img)
+        return out_arr
+
+    for pred in predictions:
         buf = np.zeros(7)
         for p in pred:
             buf = np.add(buf, p[0])
         emotions_lapse.append(buf)
-        img = augment_frame(img, emotions_lapse, len(pred), len(img_arr), faces_on)
+        img = np.zeros((400, 1920, 3), dtype=np.uint8)
+        img = augment_frame(img, emotions_lapse, len(pred), len(predictions), faces_on)
         if headcount:
             cv2.putText(img, "Head count: " + str(len(pred)),
                         (5, 30), cv2.FONT_HERSHEY_TRIPLEX, 1, (60, 20, 220))
+            # cv2.imshow('sup', img)
+            # cv2.waitKey(0)
         out_arr.append(img)
     return out_arr
 
@@ -60,9 +76,9 @@ def augment_frame(img, emotions_lapse, head_count, len_img_arr=None, faces_on=Fa
 
     class_labels = ['ANGRY', 'DISGUST', 'FEAR', 'HAPPY', 'SAD', 'SURPRISE', 'NEUTRAL']
 
-    display_img = img
+    display_img = np.copy(img)
     if not faces_on:
-        display_img = np.zeros_like(img)
+        display_img = np.zeros_like(display_img)
         display_img = np.resize(display_img, (400, 1920, 3))
 
     shift = 0

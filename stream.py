@@ -7,7 +7,9 @@ from celery import Celery
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import json
-
+import configparser
+from user import Recording
+import argparse
 
 celery = Celery(__name__)
 celery.config_from_object('celeryconfig')
@@ -26,6 +28,22 @@ GOOGLE_DISCOVERY_URL = (
 )
 
 
+def load_config():
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    rofl = ROFL("trained_knn_model.clf", retina=True, on_gpu=False,
+         confidence_threshold=config['ACTIVE']['confidence_threshold'],
+         top_k=config['ACTIVE']['top_k'],
+         nms_threshold=config['ACTIVE']['nms_threshold'],
+         keep_top_k=config['ACTIVE']['keep_top_k'],
+         vis_thres=config['ACTIVE']['vis_thres'],
+         network=config['ACTIVE']['network'],
+         distance_threshold=config['ACTIVE']['distance_threshold'],
+         samples=config['ACTIVE']['samples'],
+         eps=config['ACTIVE']['eps'])
+    return rofl, config['ACTIVE']['fps_factor']
+
+
 def send_file(filename, link=''):
     r = api.upload_video("video_output/" + filename, filename.split('/')[-1], folder_id=rofl_folder)
     _id = r['id']
@@ -40,32 +58,43 @@ def processing_nvr_(data, filename=None, email=None):
     date = data['date']
     time = data['time']
     try:
-        filename = api.download_video_nvr(room, date, time)
+        filename, parent_folder = api.download_video_nvr(room, date, time, need_folder=True)
     except:
         msg = f'Searching file in NVR archive something went wrong'
-    rofl = ROFL("trained_knn_model.clf", retina=True,
-                on_gpu=False, emotions=True)
+        # return msg
+    rofl, fps_factor = load_config()
     print(filename)
-    rofl.basic_run("queue", filename.split('/')[1], emotions=data['em'],
+    json_filename = rofl.json_run("queue", filename.split('/')[1], emotions=data['em'],
                    recognize=data['recog'], remember=data['remember'],
-                   fps_factor=30)
-    print(filename)
+                   fps_factor=fps_factor)
+
+    print(json_filename)
     i = 30
-    while not os.path.isfile("video_output/" + filename) and i != 0:
-        time.sleep(1)
-        i -= 1
-    vid_link = send_file(filename, link='view')
-    if email is not None:
-        api.send_file_with_email(email, "Processed video",
-                                 "Thank you, that's your processed video\nHere is your video:\n" + vid_link)
-    # api.upload_video()  # сюда правильно написать функцию отправки видео
-    os.remove("queue/" + filename)
+
+    # while not os.path.isfile(json_filename) and i != 0:
+    #     time.sleep(1)
+    #     i -= 1
+
+    Recording.create(filename, room, date, time, json_filename)
+    vid_link = send_file(json_filename, link='view')
+
+    dt = datetime.strptime(date + ' ' + time, '%Y-%m-%d %H:%M')
+    dt = dt.isoformat()
+
+    # api.upload_video_nvr('filename', dt, room, parent_folder)
+
+    # if email is not None:
+    #     api.send_file_with_email(email, "Processed video",
+    #                              "Thank you, that's your processed video\nHere is your video:\n" + vid_link)
+    os.remove(filename)
+    print(filename + ' was successfully analysed and result is saved in ' + json_filename)
+    # return json_filename
 
 
 def stream(date_begin, time_begin, time_end, n=4):
     data = {}
     data['room'] = '504'
-    data['em'] = False
+    data['em'] = True
     data['recog'] = False
     data['remember'] = False
     date_end = datetime.now().date()
@@ -74,7 +103,7 @@ def stream(date_begin, time_begin, time_end, n=4):
     h = 3600
     while date_begin <= date_end:
         data['date'] = date_begin.strftime('%Y-%m-%d')
-        time_begin = datetime(1, 1, 1, 9, 30)
+        # time_begin = datetime(1, 1, 1, 9, 30)
         while time_begin <= time_end:
             for i in range(n):
                 data['time'] = time_begin.strftime('%H:%M')
@@ -97,12 +126,25 @@ def stream(date_begin, time_begin, time_end, n=4):
 
 
 if __name__ == "__main__":
-    date_begin = date(2020, 2, 6)
-    time_begin = datetime(1, 1, 1, 9, 30)  # время 9:30
-    time_end = datetime(1, 1, 1, 16, 00)  # время 16:00
-    workers = 4  # сюда писать количество воркеров
-    stream(date_begin, time_begin, time_end, workers)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-w', action='store', dest="workers", default=4, type=int)
+    parser.add_argument('-d', action='store', dest='start_date', default='2020-02-06', type=str)
+    parser.add_argument('-s', action='store', dest='start_time', default='9:30', type=str)
+    parser.add_argument('-e', action='store', dest='end_time', default='16:00', type=str)
+    args = parser.parse_args()
+    date_begin = date.fromisoformat(args.start_date)
 
+    # date_begin = date(2020, 2, 6)
+    # time_begin = datetime(1, 1, 1, 9, 30)  # время 9:30
+    # time_begin = datetime(1, 1, 1, int(args.start_time.split(':')[0]), int(args.start_time.split(':')[1]))
+    time_begin = datetime.strptime(args.start_time, '%H:%M')
+    # time_end = datetime(1, 1, 1, int(args.end_time.split(':')[0]), int(args.end_time.split(':')[1]))  # время 16:00
+    time_end = datetime.strptime(args.end_time, '%H:%M')
+    workers = args.workers  # сюда писать количество воркеров
+    delta = timedelta(days=1)
+    while True:
+        stream(date_begin, time_begin, time_end, workers)
+        date_begin += delta
 
     #  celery purge
     #  celery worker -A stream.celery --loglevel=info -n 0 -Q 0 -P eventlet

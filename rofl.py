@@ -109,6 +109,7 @@ class ROFL:
                     for e in em:
                         buf.append((e[1], self.em_labels[np.argmax(e[0])], None))
                     out_array.append(buf)
+            # one_array output format: [location on frame, emotion, name of person]
             return out_array
 
         return face_predictions, em_predictions
@@ -172,7 +173,7 @@ class ROFL:
                      "fps": new_fps,
                      "config": {
                          "confidence_threshold": self.finder.confidence_threshold,
-                         "top_k":self.finder.top_k,
+                         "top_k": self.finder.top_k,
                          "nms_threshold": self.finder.nms_threshold,
                          "keep_top_k": self.finder.keep_top_k,
                          "vis_thres": self.finder.vis_thres,
@@ -200,7 +201,46 @@ class ROFL:
 
             encode.encode_cluster_sf("./strangers", "./enc_cluster.pickle")
             self.clust.remember_strangers("./enc_cluster.pickle", "./known_faces")
-        return recording
+        return 'recordings/' + filename.split('.')[0] + '.json'
+
+    def vid_from_json(self, in_dir, json_file, headcount=False, faces_on=False):
+        data = None
+        try:
+            with open(in_dir + '/' + json_file, "r") as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            return data
+        array = data["frames"]
+        faces = []
+        emotions = []
+        for frame in array:
+            buf1 = []
+            buf2 = []
+            for box in frame:
+                z = np.zeros(7)
+                z[np.argwhere(np.array(self.em_labels) == box[1])] = 1
+                buf1.append((z, box[0]))
+                buf2.append((box[2], box[0]))
+            faces.append(buf2)
+            emotions.append(buf1)
+        faces = np.array(faces)
+        emotions = np.array(emotions)
+
+        if faces.sum() == 0 and emotions.sum() == 0:
+            return None
+        img_arr = None
+        if faces_on:
+            img_arr, orig_fps = self.load_video('queue/' + data["name"], fps_factor=data["config"]["fps_factor"])
+
+        if emotions.sum() != 0:
+            out_arr = video_maker.emotion_boxes(img_arr, emotions, headcount=headcount, faces_on=faces_on)
+
+            return video_maker.render('video_output', json_file.split('.')[0] + '.mp4', out_arr, data["fps"])
+
+        if faces.sum() != 0 and faces_on:
+            out_arr = video_maker.boxes(img_arr, emotions, headcount=headcount, faces_on=faces_on)
+
+            return video_maker.render('video_output', json_file.split('.')[0] + '.mp4', out_arr, data["fps"])
 
     async def async_run(self, loop, in_dir, filename, fps_factor=1, recognize=False, remember=False, emotions=False):
         orig_img_arr, orig_fps = await loop.run_in_executor(None, self.load_video, in_dir + "/" + filename, fps_factor)
@@ -293,3 +333,88 @@ class ROFL:
         for file in filenames:
             shutil.move(file, "known_faces/" + name + "/" + file.split('/')[-1])
         self.recognizer_retrained = False
+
+
+em_labels = ['ANGRY', 'DISGUST', 'FEAR', 'HAPPY', 'SAD', 'SURPRISE', 'NEUTRAL']
+
+
+def connect_jsons(in_dir, list_of_files, one_array=False):
+    all_faces = np.array([])
+    all_emotions = np.array([])
+    new_array = np.array([])
+    fpses = []
+    for file in list_of_files:
+        data = None
+        try:
+            with open(in_dir + '/' + file.split('/')[1], "r") as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            return data
+        fpses.append(data["fps"])
+
+    max_fps = np.max(fpses)
+    multipliers = np.floor(max_fps / np.array(fpses))
+    for file, multi in zip(list_of_files, multipliers):
+        data = None
+        try:
+            with open(in_dir + '/' + file.split('/')[1], "r") as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            return data
+        array = data["frames"]
+        if not one_array:
+
+            faces = []
+            emotions = []
+            for frame in array:
+                buf1 = []
+                buf2 = []
+                for box in frame:
+                    z = np.zeros(7)
+                    z[np.argwhere(np.array(em_labels) == box[1])] = 1
+                    buf1.append((z, box[0]))
+                    buf2.append((box[2], box[0]))
+                faces.append(buf2)
+                emotions.append(buf1)
+            all_faces = np.concatenate((all_faces, np.repeat(np.array(faces), multi)), axis=0)
+            all_emotions = np.concatenate((all_emotions, np.repeat(np.array(emotions), multi)), axis=0)
+
+        else:
+
+            new_array = np.concatenate((new_array, array))
+
+    if one_array:
+        return new_array, max_fps
+    else:
+        return all_faces, all_emotions, max_fps
+
+
+def vid_from_array(filename, array, fps, headcount=False):
+    faces = []
+    emotions = []
+    for frame in array:
+        buf1 = []
+        buf2 = []
+        for box in frame:
+            z = np.zeros(7)
+            z[np.argwhere(np.array(em_labels) == box[1])] = 1
+            buf1.append((z, box[0]))
+            buf2.append((box[2], box[0]))
+        faces.append(buf2)
+        emotions.append(buf1)
+    faces = np.array(faces)
+    emotions = np.array(emotions)
+
+    if faces.sum() == 0 and emotions.sum() == 0:
+        return None
+    img_arr = None
+
+    if emotions.sum() != 0:
+        out_arr = video_maker.emotion_boxes(img_arr, emotions, headcount=headcount)
+
+        return video_maker.render('video_output', filename, out_arr, fps)
+
+    if faces.sum != 0:
+        out_arr = video_maker.boxes(img_arr, faces, headcount=headcount)
+
+        return video_maker.render('video_output', filename, out_arr, fps)

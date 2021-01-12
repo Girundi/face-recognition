@@ -100,6 +100,9 @@ class FaceFinder:
     def detect_faces(self, img_raw):
 
         img = np.float32(img_raw)
+        #
+        # if img is None or np.sum(img, axis=None) == 0:
+        #     return []
 
         im_height, im_width, _ = img.shape
         scale = torch.Tensor([img.shape[1], img.shape[0], img.shape[1], img.shape[0]])
