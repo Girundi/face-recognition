@@ -186,7 +186,7 @@ if __name__ == "__main__":
         # Assume it's already been created
         pass
 
-    app.run(debug=True)
+    app.run()
     # flower celery (пишем в терминале1)
     # celery purge
     # celery -A Rest_api.celery worker --loglevel=info -n high -Q high -P eventlet
