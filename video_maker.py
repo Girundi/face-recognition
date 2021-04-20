@@ -75,6 +75,10 @@ def render(dir, filename, frames, num_fps):
 def augment_frame(img, emotions_lapse, head_count, len_img_arr=None, faces_on=False):
 
     class_labels = ['ANGRY', 'DISGUST', 'FEAR', 'HAPPY', 'SAD', 'SURPRISE', 'NEUTRAL']
+    affection_coef = 0
+    valance_coef = 0
+    positive_emotions = [3, 5]
+    active_emotions = [0, 3, 5]
 
     display_img = np.copy(img)
     if not faces_on:
@@ -95,6 +99,12 @@ def augment_frame(img, emotions_lapse, head_count, len_img_arr=None, faces_on=Fa
     unchanged_neutral_scores = np.asarray(emotions_lapse)[:, 6]
 
     attention_coef = np.max(np.max(np.flip(emotions_lapse)[0, :], axis=0)) / head_count
+
+    for i in positive_emotions:
+        affection_coef += np.flip(emotions_lapse)[0, i] / head_count
+    for i in active_emotions:
+        valance_coef += np.flip(emotions_lapse)[0, i] / head_count
+
     # attention_coef = (np.max(emotions_count)) / head_count
     # attention_coef = np.mean(emotions_count) / np.max(emotions_count)
 
@@ -114,7 +124,6 @@ def augment_frame(img, emotions_lapse, head_count, len_img_arr=None, faces_on=Fa
 
     # emotions_scores = [angry_scores, disgust_scores, fear_scores,
     #                    happy_scores, sad_scores, surprise_scores, neutral_scores]
-
 
     plot = np.vstack((x, angry_scores)).astype(np.int32).T
     cv2.polylines(display_img, [plot], isClosed=False, thickness=2, color=(0, 0, 255))
@@ -166,7 +175,12 @@ def augment_frame(img, emotions_lapse, head_count, len_img_arr=None, faces_on=Fa
                 , cord, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (96, 96, 96), 1)
 
     cv2.putText(display_img, "Attention coef: " + str(round(attention_coef, 2)),
-                (285, 30), cv2.FONT_HERSHEY_TRIPLEX, 1, (60, 20, 220))
+                (300, 30), cv2.FONT_HERSHEY_TRIPLEX, 1, (60, 20, 220))
+
+    cv2.putText(display_img, "Arousal coef: " + str(round(affection_coef, 2)),
+                (800, 30), cv2.FONT_HERSHEY_TRIPLEX, 1, (60, 20, 220))
+
+    cv2.putText(display_img, "Valance coef: " + str(round(valance_coef, 2)),
+                (500, 30), cv2.FONT_HERSHEY_TRIPLEX, 1, (60, 20, 220))
 
     return display_img
-

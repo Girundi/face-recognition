@@ -9,7 +9,7 @@ from recognizer import Recognizer
 from strangers import Clusterizer
 import video_maker
 import encode
-from emotions import Emanalisis
+from emotions2 import Emanalisis
 import shutil
 import json
 
@@ -36,7 +36,7 @@ class ROFL:
             self.finder = None
 
         if emotions:
-            self.emotions = Emanalisis(on_gpu=on_gpu, path_to_classifier="net_714.pth", finder=self.finder)
+            self.emotions = Emanalisis(on_gpu=on_gpu, path_to_classifier="PrivateTest_model.t7", finder=self.finder)
         else:
             self.emotions = None
 
@@ -68,7 +68,96 @@ class ROFL:
                 out_arr.append(frame)
                 # cv2.imwrite("frame " + str(count_frames) + ".jpg", frame)
             i += 1
+        cap.release()
         return np.asarray(out_arr), cap.get(cv2.CAP_PROP_FPS)
+
+    def streamline_run(self, in_dir, video, fps_factor, recognize=False, emotions=False, remember=False):
+        cap = cv2.VideoCapture(in_dir + '/' + video)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        # cap = cv2.VideoCapture(0)
+        ret, frame = cap.read()
+        new_fps = fps / fps_factor
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        # t = time.time()
+        ret = True
+        # os.chdir(r"frames")
+        face_predictions = []
+        em_predictions = []
+        i = 0
+        while ret:
+            ret, frame = cap.read()
+            if i % fps_factor == 0:
+                if i == fps_factor:
+                    t = time.time()
+                face_loc = self.finder.detect_faces(frame)
+                if recognize:
+                    pred = self.recog.predict(frame, X_face_locations=face_loc)
+                    face_predictions.append(pred)
+                    for name, (top, right, bottom, left)in pred:
+                        if name == "unknown":
+                            # save_img = cv2.cvtColor(img[top:bottom, right:left], cv2.COLOR_BGR2RGB)
+                            save_img = frame[top:bottom, left:right]
+                            # cv2.imshow("Haha", save_img)
+                            # cv2.waitKey(0)
+                            cv2.imwrite("./strangers/" + datetime.datetime.now().strftime("%d%m%Y%H%M%S%f") + ".jpg",
+                                        save_img)
+
+                if emotions:
+                    em_pred = self.emotions.classify_emotions(frame, face_locations=face_loc)
+                    em_predictions.append(em_pred)
+                if i == fps_factor:
+                    t = (time.time() - t) * frame_count / fps_factor
+                    m = t // 60
+                    s = t % 60
+                    print("Approximately " + str(m) + " minutes and " + str(s) + " seconds to make predictions")
+                print(str(i / frame_count * 100) + "% of video is done")
+
+            i += 1
+        out_array = []
+        if recognize and emotions:
+            for em, face in zip(em_predictions, face_predictions):
+                buf = []
+                for e, f in zip(em, face):
+                    buf.append((e[1], self.em_labels[np.argmax(e[0])], f[0]))
+                out_array.append(buf)
+        elif recognize:
+            for face in face_predictions:
+                buf = []
+                for f in face:
+                    buf.append((f[1], None, f[0]))
+                out_array.append(buf)
+        elif emotions:
+            for em in em_predictions:
+                buf = []
+                for e in em:
+                    buf.append((e[1], self.em_labels[np.argmax(e[0])], None))
+                out_array.append(buf)
+        del face_predictions
+        del em_predictions
+
+        recording = {"name": video,
+                     "fps": new_fps,
+                     "config": {
+                         "confidence_threshold": self.finder.confidence_threshold,
+                         "top_k": self.finder.top_k,
+                         "nms_threshold": self.finder.nms_threshold,
+                         "keep_top_k": self.finder.keep_top_k,
+                         "vis_thres": self.finder.vis_thres,
+                         "network": self.finder.network,
+                         "distance_threshold": self.recog.distance_threshold,
+                         "samples": self.clust.clt.min_samples,
+                         "eps": self.clust.clt.eps,
+                         "fps_factor": fps_factor
+                     },
+                     "frames": out_array}
+
+        if remember:
+            encode.encode_cluster_sf("./strangers", "./enc_cluster.pickle")
+            self.clust.remember_strangers("./enc_cluster.pickle", "./known_faces")
+
+        with open('recordings/' + video.split('.')[0] + '.json', 'w') as f:
+            json.dump(recording, f)
+        return 'recordings/' + video.split('.')[0] + '.json'
 
     def analyse(self, img_arr, recognize=False, emotions=False, one_array=False):
         face_predictions = []
@@ -159,8 +248,13 @@ class ROFL:
         return filename
 
     def json_run(self, in_dir, filename, fps_factor=1, recognize=False, remember=False, emotions=False):
+        print(in_dir + "/" + filename)
         orig_img_arr, orig_fps = self.load_video(in_dir + "/" + filename, fps_factor)
+        # print(orig_img_arr)
         new_fps = orig_fps / fps_factor
+
+        if len(orig_img_arr) == 0:
+            return None
 
         array = self.analyse(orig_img_arr, recognize=recognize, emotions=emotions, one_array=True)
 
@@ -381,7 +475,7 @@ def connect_jsons(in_dir, list_of_files, one_array=False):
 
         else:
 
-            new_array = np.concatenate((new_array, array))
+            new_array = np.concatenate((new_array, np.repeat(array, multi)), axis=0)
 
     if one_array:
         return new_array, max_fps
@@ -405,13 +499,15 @@ def vid_from_array(filename, array, fps, headcount=False):
     faces = np.array(faces)
     emotions = np.array(emotions)
 
+    del array
+
     if faces.sum() == 0 and emotions.sum() == 0:
         return None
     img_arr = None
 
     if emotions.sum() != 0:
         out_arr = video_maker.emotion_boxes(img_arr, emotions, headcount=headcount)
-
+        print('Made array of frames')
         return video_maker.render('video_output', filename, out_arr, fps)
 
     if faces.sum != 0:

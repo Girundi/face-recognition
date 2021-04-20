@@ -27,8 +27,8 @@ SCOPES = ['https://www.googleapis.com/auth/drive',
 SERVICE_ACCOUNT_FILE = 'Emotions_Project-481579272f6a.json'
 EMAIL_ACCOUNT_FILE = 'email_credentials.json'
 NVR_ACCOUNT_FILE = 'nvr_cred.json'
-nvr_server = 'https://nvr.miem.hse.ru/api/gdrive-upload'
-nvr_key = 'https://nvr.miem.hse.ru/api/gdrive-upload/504'
+nvr_server = 'https://nvr.miem.hse.ru/api/fileuploader'
+nvr_key = {"key": "99a1dfb5342546319e3d5f4de7150f05"}
 GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
 GOOGLE_CLIENT_ID = '332884163839-cgsk3ta79lgoo2o2otcb2h8ck28cd1if.apps.googleusercontent.com'
 GOOGLE_CLIENT_SECRET = 'bIb1mKNZH18LC5lSeDj1QTMk'
@@ -97,32 +97,73 @@ def download_video_nvr(room, date, time, filename=None, need_folder=False):
         print("Download process is %d%%. " % int(status.progress() * 100))
 
     if need_folder:
-        return filename, results['files'][0]['parents']
+        return filename, results['files'][0]['parents'][0]
     else:
         return filename
 
 
-def upload_video(filename, upload_name, folder_id=None, room_num=None):
-    if folder_id is not None:
-        file_metadata = {'name': upload_name, 'parents': [folder_id]}
-        media = MediaFileUpload(filename, resumable=True)
-        r = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        print(r)
-        return r
-    elif room_num is not None:
-        if platform.system() != "Windows":
-            old_string = filename
-            _dir, old_string = old_string.split("/")
-            old_string = old_string.split(".")[0]
-            d = datetime.datetime.strptime(old_string, "%Y-%m-%d_%H-%M")
-            new_string = _dir + "/" + d.strftime("%Y-%m-%d_%H:%M") + ".mp4"
-            os.rename(filename, new_string)
-            filename = new_string
-        file = open(filename, 'rb')
-        files = {'file': file}
-        res = requests.post(nvr_server + "/" + room_num, files=files, headers=nvr_key)
+def get_parent_folder(room, date, time):
+    try:
+        rooms = pickle.loads(open("rooms.pickle", "rb").read())
+    except:
+        raise Exception("No file containing rooms' ids")
+    room_id = rooms[room][0]
+    tag = rooms[room][1]
+    results = look_into_drive(room_id, date)
+    if len(results['files']) > 1:
+        raise Exception("More then one directory on Google drive")
+    elif len(results['files']) == 0:
+        raise Exception("No files found on drive")
+    time_id = results['files'][0]['id']
+    results = look_into_drive(time_id, time)
+    if len(results['files']) > 1:
+        raise Exception("More then one directory on Google drive")
+    elif len(results['files']) == 0:
+        raise Exception("No files found on drive")
+    return results["files"][0]["id"][0]
 
+
+def upload_video(filename, upload_name, folder_id=None):
+    file_metadata = {'name': upload_name, 'parents': [folder_id]}
+    media = MediaFileUpload(filename, resumable=True)
+    r = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    print(r)
+    return r
+
+
+def upload_video_nvr(filename, dt, room,  name_on_folder='emotions'):
+
+    file_size = os.stat(filename).st_size
+    data = {
+        "file_name": name_on_folder,  # имя на диске гугла
+        # "folder_name": parent_folder,
+        "room_name": room,
+        "file_size": file_size,  # размер файла
+        "record_dt": dt
+    }
+    res = requests.post(
+        f"{nvr_server}/files", headers=nvr_key, json=data
+    )
+    try:
+        file_id = res.json()["file_id"]
+    except:
         return res.status_code
+
+    chunk_size = 256 * 1024 * 20  # 5 MB
+
+    with open(filename, "rb") as f:
+        chunk = f.read(chunk_size)  # 5 MB
+
+        while len(chunk) > 0:
+            resp = requests.put(
+                f"{nvr_server}/files/{file_id}",
+                headers=nvr_key,
+                files={"file_data": chunk},
+            )
+            print(resp.json())
+            chunk = f.read(chunk_size)
+
+    return res.status_code
 
 
 def edit_rooms(rooms, ids, tags):
@@ -234,6 +275,38 @@ def send_file_with_email(to:str, subject:str, message_text, file=None):
 def get_google_provider_cfg():
     return requests.get(GOOGLE_DISCOVERY_URL).json()
 
+
+def get_recordings_erudite(fromdate, todate, room):
+    if fromdate <= todate:
+        res = requests.get("https://nvr.miem.hse.ru/api/erudite/records?fromdate=" + fromdate.isoformat() +
+                           "&todate=" + todate.isoformat() +
+                           "&room_name=" + str(room),
+                           headers=nvr_key)
+        return res
+    return 0
+
+
+def update_url_erudite(recording_id, data):
+    res = requests.patch("https://nvr.miem.hse.ru/api/erudite/records/" + recording_id, json=data, headers=nvr_key)
+    return res
+
+
+def get_lessons_erudite(fromdate, todate, room):
+    if fromdate <= todate:
+        res = requests.get(
+            "https://nvr.miem.hse.ru/api/erudite/lessons?" +
+            "fromdate=" + fromdate.isoformat() +
+            "&todate=" + todate.isoformat() +
+            "&ruz_auditorium=" + str(room))
+        out = []
+        for lesson in json.loads(res.text):
+            if lesson['ruz_kind_of_work'] == 'Семинар' \
+                    or lesson['ruz_kind_of_work'] == 'Практическое занятие' \
+                    or lesson['ruz_kind_of_work'] == 'Лекция'\
+                    or lesson['ruz_kind_of_work'] == 'Экзамен':
+                out.append(lesson)
+        return out
+    return 0
 
 # send_file_with_email('iasizykh@miem.hse.ru', 'Test', 'Test')
 # build_service()
