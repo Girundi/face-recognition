@@ -113,9 +113,9 @@ class FaceFinder:
             img = img.to(self.device)
             scale = scale.to(self.device)
         # graph = 0
-        tic = time.time()
+        # tic = time.time()
         loc, conf, landms = self.detector(img)  # forward pass
-        print('net forward time: {:.4f}'.format(time.time() - tic))
+        # print('net forward time: {:.4f}'.format(time.time() - tic))
 
         priorbox = PriorBox(self.cfg, image_size=(im_height, im_width))
         priors = priorbox.forward()

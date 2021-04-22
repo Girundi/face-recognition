@@ -121,7 +121,7 @@ class Emanalisis:
         _, predicted = torch.max(outputs_avg.data, 0)
         emcount = np.zeros(7)
         emcount[predicted] += 1
-        print(str(time.time() - tic) + " to classify")
+        # print(str(time.time() - tic) + " to classify")
         return emcount
 
     def classify_emotions(self, img, face_locations=None):

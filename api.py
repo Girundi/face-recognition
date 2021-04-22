@@ -163,7 +163,7 @@ def upload_video_nvr(filename, dt, room,  name_on_folder='emotions'):
             print(resp.json())
             chunk = f.read(chunk_size)
 
-    return res, file_id
+    return resp, file_id
 
 
 def edit_rooms(rooms, ids, tags):

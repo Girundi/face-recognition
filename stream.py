@@ -48,7 +48,7 @@ def load_config():
 
 
 def send_file(filename, link=''):
-    r = api.upload_video("video_output/" + filename, filename.split('/')[-1], folder_id=rofl_folder)
+    r = api.upload_video(filename, filename, folder_id=rofl_folder)
     _id = r['id']
     """Show result endpoint."""
     return "https://drive.google.com/file/d/" + _id + "/" + link
@@ -84,7 +84,7 @@ def processing_nvr_(data, filename=None, email=None):
         #                recognize=data['recog'], remember=data['remember'],
         #                fps_factor=fps_factor)
         json_filename = rofl.streamline_run('queue', filename.split('/')[1], fps_factor, emotions=data['em'],
-                                            recognize=data['recog'], remember=['remember'])
+                                            recognize=data['recog'], remember=data['remember'])
 
         print(json_filename)
 
@@ -96,7 +96,7 @@ def processing_nvr_(data, filename=None, email=None):
             if i == 0:
                 return 'Problem creating file ' + json_filename
 
-        Recording.create(filename, room, date, time, json_filename)
+        # Recording.create(filename, room, date, time, json_filename)
         vid_link = send_file(json_filename, link='view')
 
         dt = datetime.strptime(date + ' ' + time, '%Y-%m-%d %H:%M')
@@ -183,10 +183,10 @@ def stream(date_begin, time_begin, time_end, n=4):
 @celery.task(name='stream.json_recall')
 def json_recall(in_dir, recordings, time, room, start_dif=0, end_dif=0):
     array, fps = connect_jsons(in_dir, recordings, one_array=True)
-    if start_dif != 0:
+    if start_dif.seconds != 0:
         amount = int(start_dif.seconds * fps)
         array = array[amount:].copy()
-    if end_dif != 0:
+    if end_dif.seconds != 0:
         amount = -int(end_dif.seconds * fps)
         array = array[:amount].copy()
 
@@ -243,8 +243,8 @@ def stream_erudite(room, n=4):
 
 @celery.task(name='stream.processing_lesson')
 def processing_lesson(lesson):
-    start = datetime.strptime(lesson['start_time'], '%H:%M')
-    end = datetime.strptime(lesson['end_time'], '%H:%M')
+    start = datetime.strptime(lesson['start_time'] + ' ' + lesson['date'], '%H:%M %Y-%m-%d')
+    end = datetime.strptime(lesson['end_time'] + ' ' + lesson['date'], '%H:%M %Y-%m-%d')
     lesson_start = start
     lesson_end = end
     if start.minute != 30 or start.minute != 0:
@@ -276,23 +276,27 @@ def processing_lesson(lesson):
         extra_start += delta
     if len(recordings) == 3:
         start_difference = lesson_start - start
-        end_difference = lesson_end - end
+        end_difference = end - lesson_end
         array, fps = connect_jsons('recordings', recordings, one_array=True)
-        if start_difference != 0:
+        if start_difference.seconds != 0:
             amount = int(start_difference.seconds * fps)
             array = array[amount:].copy()
-        if end_difference != 0:
-            amount = int(end_difference.seconds * fps)
+        if end_difference.seconds != 0:
+            amount = -int(end_difference.seconds * fps)
             array = array[:amount].copy()
 
-        video = video_maker.optimized_render('video_output', uuid.uuid4(), array, fps, headcount=True)
+        video = video_maker.optimized_render('video_output', str(uuid.uuid4()) + '.mp4', array, fps, headcount=True)
         res, file_id = api.upload_video_nvr(video, lesson_datetime.isoformat(), lesson['ruz_auditorium'],
                                             name_on_folder='emotions ' + lesson['cource_code'])
         lesson_recordings = api.get_recordings_erudite(lesson_start, lesson_end, lesson['ruz_auditorium'])
 
-        emotion_video_url = api.get_url_by_id_erudite(file_id)
+        # emotion_video_url = api.get_url_by_id_erudite(file_id)
+
         for rec in lesson_recordings:
-            api.update_url_erudite(rec['id'], emotion_video_url)
+            data = {
+                'emotions_url': res['file_url']
+            }
+            api.update_url_erudite(rec['id'], data)
         return lesson['course_code'] + ' ' + lesson_datetime.isoformat() + ' was processed'
 
 
@@ -309,15 +313,15 @@ def stream_optimized(rooms, n=4):
 
         p = {}
         for i in range(n):
-            p[str(i)] = processing_lesson.apply_async(args=[lesson], queue=str(i), priority=i)
+            p[str(i)] = processing_lesson.apply_async(args=[lessons[i]], queue=str(i), priority=i)
             sleep(5)
         j = n
-        while j < len(lesson):
-            if p[str(i)].status == 'SUCCESS' or p[str(i)].status == 'FAILURE':
+        while j < len(lessons):
                 for i in range(n):
-                    p[str(i)] = processing_lesson.apply_async(args=[lessons[j]], queue=str(i), priority=i)
-                    j += 1
-                    sleep(5)
+                    if p[str(i)].status == 'SUCCESS' or p[str(i)].status == 'FAILURE':
+                        p[str(i)] = processing_lesson.apply_async(args=[lessons[j]], queue=str(i), priority=i)
+                        j += 1
+                        sleep(5)
 
 
         # i = 0
@@ -330,8 +334,6 @@ def stream_optimized(rooms, n=4):
         #             lessons.pop(i)
         #             break
         #     i += 1
-
-
 
 
 if __name__ == "__main__":
