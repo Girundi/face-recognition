@@ -12,6 +12,7 @@ from user import Recording
 import argparse
 import uuid
 from dateutil.parser import isoparse
+import video_maker
 
 celery = Celery(__name__)
 celery.config_from_object('celeryconfig')
@@ -33,7 +34,7 @@ GOOGLE_DISCOVERY_URL = (
 def load_config():
     config = configparser.ConfigParser()
     config.read('config.ini')
-    rofl = ROFL("trained_knn_model.clf", retina=True, on_gpu=False, emotions=True,
+    rofl = ROFL("trained_knn_model.clf", retina=True, on_gpu=True, emotions=True,
          confidence_threshold=float(config['ACTIVE']['confidence_threshold']),
          top_k=int(config['ACTIVE']['top_k']),
          nms_threshold=float(config['ACTIVE']['nms_threshold']),
@@ -108,8 +109,8 @@ def processing_nvr_(data, filename=None, email=None):
         #                              "Thank you, that's your processed video\nHere is your video:\n" + vid_link)
         os.remove(filename)
         print(filename + ' was successfully analysed and result is saved in ' + json_filename)
-        return filename + ' was successfully analysed and result is saved in ' + json_filename
-    return 'Filename is None'
+        return json_filename
+    return None
 
 
 def stream_timing(date_begin, time_begin, time_end, n=4):
@@ -206,7 +207,8 @@ def stream_background(time='2020-02-06'):
         date_begin = date_begin + timedelta(days=1)
 
 
-def stream_erudite(room):
+# @celery.task(name='stream.stream_erudite')
+def stream_erudite(room, n=4):
     while True:
         now = datetime.now()
         if now.hour == 22:
@@ -237,6 +239,99 @@ def stream_erudite(room):
                     data['time'] = start.strftime('%H:%M')
                     processing_nvr_(data)
                     start += delta
+
+
+@celery.task(name='stream.processing_lesson')
+def processing_lesson(lesson):
+    start = datetime.strptime(lesson['start_time'], '%H:%M')
+    end = datetime.strptime(lesson['end_time'], '%H:%M')
+    lesson_start = start
+    lesson_end = end
+    if start.minute != 30 or start.minute != 0:
+        if start.minute > 30:
+            start -= timedelta(minutes=start.minute - 30)
+        if start.minute < 30:
+            start -= timedelta(minutes=start.minute)
+    if end.minute != 30 or end.minute != 0:
+        if end.minute > 30:
+            end += timedelta(minutes=end.minute - 30)
+        if end.minute < 30:
+            end += timedelta(minutes=30 - end.minute)
+
+    delta = timedelta(minutes=30)
+    recordings = []
+    extra_start = start
+    lesson_datetime = datetime.strptime(lesson['date'] + ' ' + lesson['start_time'], '%Y-%m-%d %H:%M')
+
+    while extra_start != end:
+        data = {}
+        data['room'] = str(lesson['ruz_auditorium'])
+        data['em'] = True
+        data['recog'] = False
+        data['remember'] = False
+        data['date'] = lesson['date']
+        data['time'] = extra_start.strftime('%H:%M')
+        file = processing_nvr_(data)
+        recordings.append(file)
+        extra_start += delta
+    if len(recordings) == 3:
+        start_difference = lesson_start - start
+        end_difference = lesson_end - end
+        array, fps = connect_jsons('recordings', recordings, one_array=True)
+        if start_difference != 0:
+            amount = int(start_difference.seconds * fps)
+            array = array[amount:].copy()
+        if end_difference != 0:
+            amount = int(end_difference.seconds * fps)
+            array = array[:amount].copy()
+
+        video = video_maker.optimized_render('video_output', uuid.uuid4(), array, fps, headcount=True)
+        res, file_id = api.upload_video_nvr(video, lesson_datetime.isoformat(), lesson['ruz_auditorium'],
+                                            name_on_folder='emotions ' + lesson['cource_code'])
+        lesson_recordings = api.get_recordings_erudite(lesson_start, lesson_end, lesson['ruz_auditorium'])
+
+        emotion_video_url = api.get_url_by_id_erudite(file_id)
+        for rec in lesson_recordings:
+            api.update_url_erudite(rec['id'], emotion_video_url)
+        return lesson['course_code'] + ' ' + lesson_datetime.isoformat() + ' was processed'
+
+
+def stream_optimized(rooms, n=4):
+    while True:
+        now = datetime.now()
+        lessons = []
+        for room in rooms:
+            if now.hour == 22:
+                fromdate = datetime(year=now.year, month=now.month, day=now.day, hour=9, minute=30)
+                todate = datetime(year=now.year, month=now.month, day=now.day, hour=21, minute=30)
+                # if len(api.get_recordings_erudite(fromdate, todate, room)):
+                lessons += api.get_lessons_erudite(fromdate, todate, room)
+
+        p = {}
+        for i in range(n):
+            p[str(i)] = processing_lesson.apply_async(args=[lesson], queue=str(i), priority=i)
+            sleep(5)
+        j = n
+        while j < len(lesson):
+            if p[str(i)].status == 'SUCCESS' or p[str(i)].status == 'FAILURE':
+                for i in range(n):
+                    p[str(i)] = processing_lesson.apply_async(args=[lessons[j]], queue=str(i), priority=i)
+                    j += 1
+                    sleep(5)
+
+
+        # i = 0
+        # while i != len(lessons):
+        #     t = datetime.strptime(lesson['start_time'], '%H:%M')
+        #     lesson_time = datetime(year=now.year, month=now.month, day=now.day, hour=t.hour, minute=t.minute)
+        #     for i in range(1, 4):
+        #         if not len(api.get_recordings_erudite(lesson_time, lesson_time+i*delta, lesson['ruz_auditorium'])):
+        #             print("Haven't found recording(s) for " + lesson_time.isoformat() + " " + lesson['ruz_auditorium'])
+        #             lessons.pop(i)
+        #             break
+        #     i += 1
+
+
 
 
 if __name__ == "__main__":

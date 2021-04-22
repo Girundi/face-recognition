@@ -91,7 +91,7 @@ class Emanalisis:
 
         else:
             self.classifier = Net('VGG19')
-            self.classifier.load_state_dict(torch.load(path_to_classifier)['net'])
+            self.classifier.load_state_dict(torch.load(path_to_classifier, map_location=torch.device('cpu'))['net'])
             # self.classifier.cuda()
             self.classifier.eval()
 
@@ -112,7 +112,8 @@ class Emanalisis:
         ncrops, c, h, w = np.shape(inputs)
 
         inputs = inputs.view(-1, c, h, w)
-        inputs = inputs.cuda()
+        if self.on_gpu:
+            inputs = inputs.cuda()
         inputs = Variable(inputs, volatile=True)
         outputs = self.classifier(inputs)
         outputs_avg = outputs.view(ncrops, -1).mean(0)

@@ -455,7 +455,7 @@ def connect_jsons(in_dir, list_of_files, one_array=False):
                 data = json.load(f)
         except FileNotFoundError:
             return data
-        array = data["frames"]
+        array = np.array(data["frames"])
         if not one_array:
 
             faces = []
@@ -483,34 +483,41 @@ def connect_jsons(in_dir, list_of_files, one_array=False):
         return all_faces, all_emotions, max_fps
 
 
+# def vid_from_array(filename, array, fps, headcount=False):
+#     faces = []
+#     emotions = []
+#     for frame in array:
+#         buf1 = []
+#         buf2 = []
+#         for box in frame:
+#             z = np.zeros(7)
+#             z[np.argwhere(np.array(em_labels) == box[1])] = 1
+#             buf1.append((z, box[0]))
+#             buf2.append((box[2], box[0]))
+#         faces.append(buf2)
+#         emotions.append(buf1)
+#     faces = np.array(faces)
+#     emotions = np.array(emotions)
+#
+#     del array
+#
+#     if faces.sum() == 0 and emotions.sum() == 0:
+#         return None
+#     img_arr = None
+#
+#     if emotions.sum() != 0:
+#         out_arr = video_maker.emotion_boxes(img_arr, emotions, headcount=headcount)
+#         print('Made array of frames')
+#         return video_maker.render('video_output', filename, out_arr, fps)
+#
+#     if faces.sum != 0:
+#         out_arr = video_maker.boxes(img_arr, faces, headcount=headcount)
+#
+#         return video_maker.render('video_output', filename, out_arr, fps)
+
 def vid_from_array(filename, array, fps, headcount=False):
-    faces = []
-    emotions = []
-    for frame in array:
-        buf1 = []
-        buf2 = []
-        for box in frame:
-            z = np.zeros(7)
-            z[np.argwhere(np.array(em_labels) == box[1])] = 1
-            buf1.append((z, box[0]))
-            buf2.append((box[2], box[0]))
-        faces.append(buf2)
-        emotions.append(buf1)
-    faces = np.array(faces)
-    emotions = np.array(emotions)
-
-    del array
-
-    if faces.sum() == 0 and emotions.sum() == 0:
-        return None
     img_arr = None
 
-    if emotions.sum() != 0:
-        out_arr = video_maker.emotion_boxes(img_arr, emotions, headcount=headcount)
-        print('Made array of frames')
-        return video_maker.render('video_output', filename, out_arr, fps)
-
-    if faces.sum != 0:
-        out_arr = video_maker.boxes(img_arr, faces, headcount=headcount)
-
-        return video_maker.render('video_output', filename, out_arr, fps)
+    out_arr = video_maker.optimized_boxes(img_arr, array, headcount=headcount)
+    print('Made array of frames')
+    return video_maker.render('video_output', filename, out_arr, fps)

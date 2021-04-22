@@ -147,7 +147,7 @@ def upload_video_nvr(filename, dt, room,  name_on_folder='emotions'):
     try:
         file_id = res.json()["file_id"]
     except:
-        return res.status_code
+        return res, 0
 
     chunk_size = 256 * 1024 * 20  # 5 MB
 
@@ -163,7 +163,7 @@ def upload_video_nvr(filename, dt, room,  name_on_folder='emotions'):
             print(resp.json())
             chunk = f.read(chunk_size)
 
-    return res.status_code
+    return res, file_id
 
 
 def edit_rooms(rooms, ids, tags):
@@ -282,7 +282,7 @@ def get_recordings_erudite(fromdate, todate, room):
                            "&todate=" + todate.isoformat() +
                            "&room_name=" + str(room),
                            headers=nvr_key)
-        return res
+        return json.loads(res.text)
     return 0
 
 
@@ -307,6 +307,14 @@ def get_lessons_erudite(fromdate, todate, room):
                 out.append(lesson)
         return out
     return 0
+
+
+def get_url_by_id_erudite(recording_id):
+    res = requests.get("https://nvr.miem.hse.ru/api/erudite/records/" + recording_id, headers=nvr_key)
+    res = json.loads(res.text)
+    return res['url']
+
+# def get_recording_by_id()
 
 # send_file_with_email('iasizykh@miem.hse.ru', 'Test', 'Test')
 # build_service()
