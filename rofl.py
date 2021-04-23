@@ -432,7 +432,7 @@ class ROFL:
 em_labels = ['ANGRY', 'DISGUST', 'FEAR', 'HAPPY', 'SAD', 'SURPRISE', 'NEUTRAL']
 
 
-def connect_jsons(in_dir, list_of_files, one_array=False):
+def connect_jsons(list_of_files, one_array=False):
     all_faces = np.array([])
     all_emotions = np.array([])
     new_array = np.array([])
@@ -440,10 +440,10 @@ def connect_jsons(in_dir, list_of_files, one_array=False):
     for file in list_of_files:
         data = None
         try:
-            with open(in_dir + '/' + file.split('/')[1], "r") as f:
+            with open(file, "r") as f:
                 data = json.load(f)
         except FileNotFoundError:
-            return data
+            return (0,0)
         fpses.append(data["fps"])
 
     max_fps = np.max(fpses)
@@ -451,10 +451,10 @@ def connect_jsons(in_dir, list_of_files, one_array=False):
     for file, multi in zip(list_of_files, multipliers):
         data = None
         try:
-            with open(in_dir + '/' + file.split('/')[1], "r") as f:
+            with open(file, "r") as f:
                 data = json.load(f)
         except FileNotFoundError:
-            return data
+            return (0,0)
         array = np.array(data["frames"])
         if not one_array:
 

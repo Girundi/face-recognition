@@ -160,10 +160,10 @@ def upload_video_nvr(filename, dt, room,  name_on_folder='emotions'):
                 headers=nvr_key,
                 files={"file_data": chunk},
             )
-            print(resp.json())
+            print(resp)
             chunk = f.read(chunk_size)
 
-    return resp, file_id
+    return json.loads(resp.text), file_id
 
 
 def edit_rooms(rooms, ids, tags):
@@ -292,21 +292,23 @@ def update_url_erudite(recording_id, data):
 
 
 def get_lessons_erudite(fromdate, todate, room):
+    out = []
     if fromdate <= todate:
         res = requests.get(
             "https://nvr.miem.hse.ru/api/erudite/lessons?" +
             "fromdate=" + fromdate.isoformat() +
             "&todate=" + todate.isoformat() +
             "&ruz_auditorium=" + str(room))
-        out = []
-        for lesson in json.loads(res.text):
-            if lesson['ruz_kind_of_work'] == 'Семинар' \
-                    or lesson['ruz_kind_of_work'] == 'Практическое занятие' \
-                    or lesson['ruz_kind_of_work'] == 'Лекция'\
-                    or lesson['ruz_kind_of_work'] == 'Экзамен':
-                out.append(lesson)
+
+        if res.status_code == 200:
+            for lesson in json.loads(res.text):
+                if lesson['ruz_kind_of_work'] == 'Семинар' \
+                        or lesson['ruz_kind_of_work'] == 'Практическое занятие' \
+                        or lesson['ruz_kind_of_work'] == 'Лекция'\
+                        or lesson['ruz_kind_of_work'] == 'Экзамен':
+                    out.append(lesson)
         return out
-    return 0
+    return out
 
 
 def get_url_by_id_erudite(recording_id):
@@ -336,5 +338,5 @@ def get_url_by_id_erudite(recording_id):
 # rooms = ['504', '520', '305', '505a', '307', '306']
 # ids = ['1zAPs-2GP_SQj6tHLWwgohjuwCS_7o3yu', '1hjRds9U673yqZq6sjPuoLT3R0-zzr-B3', '1i3j8a60gk-RtX6vS3md8q98xtbc5VSk-',
 #        '14JWOQs_dW8aIHpQZfO-KQ9HKQVqrwLN9', '1qZNnDJpIBZI52CcEcwAJP69QR9LyIPi2', '1INi7xUvLhPJW0as3HO8ugdCgsO-HwfxB']
-# tags = ['26', None, '54', None, None, None]
+# tags = ['26', None, '54', None, None, '106']
 # edit_rooms(rooms, ids, tags)

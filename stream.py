@@ -16,7 +16,7 @@ import video_maker
 
 celery = Celery(__name__)
 celery.config_from_object('celeryconfig')
-
+# celery.control.purge()
 rofl_folder = "14Xsw4xk6vUFINsyy1OH5937Rq98W4JHw"
 
 api.credentials = service_account.Credentials.from_service_account_file(api.SERVICE_ACCOUNT_FILE, scopes=api.SCOPES)
@@ -63,16 +63,17 @@ def processing_nvr_(data, filename=None, email=None):
     time = data['time']
     try:
         filename, parent_folder = api.download_video_nvr(room, date, time, need_folder=True)
+        sleep(35)
     except:
         msg = f'Searching file in NVR archive something went wrong'
-        return msg
+        return None
 
     i = 30
     while not os.path.isfile(filename):
         sleep(5)
         i -= 1
         if i == 0:
-            return 'Problem creating file ' + filename
+            return None
 
     sleep(60)
 
@@ -94,7 +95,7 @@ def processing_nvr_(data, filename=None, email=None):
             sleep(5)
             i -= 1
             if i == 0:
-                return 'Problem creating file ' + json_filename
+                return None
 
         # Recording.create(filename, room, date, time, json_filename)
         vid_link = send_file(json_filename, link='view')
@@ -182,7 +183,7 @@ def stream(date_begin, time_begin, time_end, n=4):
 
 @celery.task(name='stream.json_recall')
 def json_recall(in_dir, recordings, time, room, start_dif=0, end_dif=0):
-    array, fps = connect_jsons(in_dir, recordings, one_array=True)
+    array, fps = connect_jsons(recordings, one_array=True)
     if start_dif.seconds != 0:
         amount = int(start_dif.seconds * fps)
         array = array[amount:].copy()
@@ -272,12 +273,13 @@ def processing_lesson(lesson):
         data['date'] = lesson['date']
         data['time'] = extra_start.strftime('%H:%M')
         file = processing_nvr_(data)
-        recordings.append(file)
+        if file is not None:
+            recordings.append(file)
         extra_start += delta
     if len(recordings) == 3:
         start_difference = lesson_start - start
         end_difference = end - lesson_end
-        array, fps = connect_jsons('recordings', recordings, one_array=True)
+        array, fps = connect_jsons(recordings, one_array=True)
         if start_difference.seconds != 0:
             amount = int(start_difference.seconds * fps)
             array = array[amount:].copy()
@@ -287,7 +289,7 @@ def processing_lesson(lesson):
 
         video = video_maker.optimized_render('video_output', str(uuid.uuid4()) + '.mp4', array, fps, headcount=True)
         res, file_id = api.upload_video_nvr(video, lesson_datetime.isoformat(), lesson['ruz_auditorium'],
-                                            name_on_folder='emotions ' + lesson['cource_code'])
+                                            name_on_folder='emotions ' + lesson['course_code'])
         lesson_recordings = api.get_recordings_erudite(lesson_start, lesson_end, lesson['ruz_auditorium'])
 
         # emotion_video_url = api.get_url_by_id_erudite(file_id)
@@ -298,9 +300,11 @@ def processing_lesson(lesson):
             }
             api.update_url_erudite(rec['id'], data)
         return lesson['course_code'] + ' ' + lesson_datetime.isoformat() + ' was processed'
+    print('Something went wrong')
+    return 'Something went wrong'
 
 
-def stream_optimized(rooms, n=4):
+def stream_optimized(rooms, n=2):
     while True:
         now = datetime.now()
         lessons = []
@@ -311,17 +315,25 @@ def stream_optimized(rooms, n=4):
                 # if len(api.get_recordings_erudite(fromdate, todate, room)):
                 lessons += api.get_lessons_erudite(fromdate, todate, room)
 
-        p = {}
-        for i in range(n):
-            p[str(i)] = processing_lesson.apply_async(args=[lessons[i]], queue=str(i), priority=i)
-            sleep(5)
-        j = n
-        while j < len(lessons):
-                for i in range(n):
-                    if p[str(i)].status == 'SUCCESS' or p[str(i)].status == 'FAILURE':
-                        p[str(i)] = processing_lesson.apply_async(args=[lessons[j]], queue=str(i), priority=i)
-                        j += 1
-                        sleep(5)
+                p = {}
+                load = min(n, len(lessons))
+                for i in range(load):
+                    p[str(i)] = processing_lesson.apply_async(args=[lessons[i]], queue=str(i), priority=i)
+                    sleep(5)
+                j = load
+                while j < len(lessons):
+                    for i in range(load):
+                        if p[str(i)].status == 'SUCCESS' or p[str(i)].status == 'FAILURE':
+                            p[str(i)] = processing_lesson.apply_async(args=[lessons[j]], queue=str(i), priority=i)
+                            j += 1
+                            if j >= len(lessons):
+                                break
+                            sleep(5)
+                    if j >= len(lessons):
+                        break
+
+            else:
+                sleep(10*60)
 
 
         # i = 0
@@ -336,37 +348,68 @@ def stream_optimized(rooms, n=4):
         #     i += 1
 
 
+def stream_one_day(date, rooms, n=2):
+    now = date
+    lessons = []
+    for room in rooms:
+        # if now.hour == 22:
+        fromdate = datetime(year=now.year, month=now.month, day=now.day, hour=9, minute=30)
+        todate = datetime(year=now.year, month=now.month, day=now.day, hour=21, minute=30)
+        # if len(api.get_recordings_erudite(fromdate, todate, room)):
+        lessons += api.get_lessons_erudite(fromdate, todate, room)
+
+    p = {}
+    load = min(n, len(lessons))
+    for i in range(load):
+        p[str(i)] = processing_lesson.apply_async(args=[lessons[i]], queue=str(i), priority=i)
+        # processing_lesson(lessons[i])
+        sleep(5)
+    j = load
+    while j < len(lessons):
+        for i in range(load):
+            if p[str(i)].status == 'SUCCESS' or p[str(i)].status == 'FAILURE':
+                p[str(i)] = processing_lesson.apply_async(args=[lessons[j]], queue=str(i), priority=i)
+                j += 1
+                if j >= len(lessons):
+                    break
+                sleep(5)
+        if j >= len(lessons):
+            break
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('-w', action='store', dest="workers", default=4, type=int)
-    parser.add_argument('-d', action='store', dest='start_date', default='2020-02-06', type=str)
-    parser.add_argument('-s', action='store', dest='start_time', default='09:30', type=str)
-    parser.add_argument('-e', action='store', dest='end_time', default='16:00', type=str)
+    parser.add_argument('-w', action='store', dest="workers", default=2, type=int)
+    parser.add_argument('-d', action='store', dest='start_date', default='2021-04-24', type=str)
+    parser.add_argument('-o', action='store', dest='optimized', default=0, type=int)
     args = parser.parse_args()
     date_begin = isoparse(args.start_date)
-
+    is_optimized = args.optimized == 1
 
     # date_begin = date(2020, 2, 6)
     # time_begin = datetime(1, 1, 1, 9, 30)  # время 9:30
     # time_begin = datetime(1, 1, 1, int(args.start_time.split(':')[0]), int(args.start_time.split(':')[1]))
-    time_begin = datetime.strptime(args.start_time, '%H:%M')
+    # time_begin = datetime.strptime(args.start_time, '%H:%M')
     # time_end = datetime(1, 1, 1, int(args.end_time.split(':')[0]), int(args.end_time.split(':')[1]))  # время 16:00
-    time_end = datetime.strptime(args.end_time, '%H:%M')
+    # time_end = datetime.strptime(args.end_time, '%H:%M')
     workers = args.workers  # сюда писать количество воркеров
     delta = timedelta(days=1)
 
     data = {}
-    data['room'] = '504'
-    data['em'] = True
-    data['recog'] = False
-    data['remember'] = False
     data['date'] = date_begin.strftime('%Y-%m-%d')
-    data['time'] = time_begin.strftime('%H:%M')
+    # data['time'] = time_begin.strftime('%H:%M')
     # processing_nvr_(data)
-    while True:
-        stream(date_begin, time_begin, time_end, workers)
-        date_begin += delta
+    rooms = ['305', '306', '504']
+    if is_optimized:
+        stream_optimized(rooms, workers)
+    else:
+        while True:
+            now = datetime.now()
+            if date_begin < datetime(now.year, now.month, now.day, 23, 59, 59):
+                stream_one_day(date_begin, rooms, workers)
+                date_begin += delta
+            sleep(15*60)
 
     #  celery purge
     #  celery worker -A stream.celery --loglevel=info -n 0 -Q 0 -P eventlet &
