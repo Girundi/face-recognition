@@ -377,11 +377,41 @@ def stream_one_day(date, rooms, n=2):
             break
 
 
+def stream_metrics_only(date, rooms, n=2):
+    now = date
+    lessons = []
+    for room in rooms:
+        # if now.hour == 22:
+        fromdate = datetime(year=now.year, month=now.month, day=now.day, hour=9, minute=30)
+        todate = datetime(year=now.year, month=now.month, day=now.day, hour=21, minute=30)
+        # if len(api.get_recordings_erudite(fromdate, todate, room)):
+        lessons += api.get_lessons_erudite(fromdate, todate, room)
+
+    p = {}
+    load = min(n, len(lessons))
+    for i in range(load):
+        p[str(i)] = processing_lesson.apply_async(args=[lessons[i]], queue=str(i), priority=i)
+        # processing_lesson(lessons[i])
+        sleep(5)
+    j = load
+    while j < len(lessons):
+        for i in range(load):
+            if p[str(i)].status == 'SUCCESS' or p[str(i)].status == 'FAILURE':
+                p[str(i)] = processing_lesson.apply_async(args=[lessons[j]], queue=str(i), priority=i)
+                j += 1
+                if j >= len(lessons):
+                    break
+                sleep(5)
+        if j >= len(lessons):
+            break
+
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-w', action='store', dest="workers", default=2, type=int)
-    parser.add_argument('-d', action='store', dest='start_date', default='2021-04-24', type=str)
+    parser.add_argument('-d', action='store', dest='start_date', default='2021-04-17', type=str)
     parser.add_argument('-o', action='store', dest='optimized', default=0, type=int)
     args = parser.parse_args()
     date_begin = isoparse(args.start_date)
@@ -406,7 +436,7 @@ if __name__ == "__main__":
     else:
         while True:
             now = datetime.now()
-            if date_begin < datetime(now.year, now.month, now.day, 23, 59, 59):
+            if date_begin < datetime(now.year, now.month, now.day, 23, 59, 59) - delta:
                 stream_one_day(date_begin, rooms, workers)
                 date_begin += delta
             sleep(15*60)
