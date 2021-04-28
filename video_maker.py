@@ -149,16 +149,18 @@ def optimized_render(dir, filename, predictions, num_fps, metrics_lapse, headcou
             metrics_lapse.pop(0)
         # metrics_lapse.append(buf)
         img = np.zeros((400, 1920, 3), dtype=np.uint8)
-        # changed_metric_lapse = metrics_lapse
-        # if head_count > 5:
-        #     transposed_metrics_lapse = np.array(metrics_lapse).T
-        #     smooth_metric_lapse = []
-        #     for metric in transposed_metrics_lapse:
-        #         f = interp1d(np.linspace(1, metric.shape[0]+1, num=metric.shape[0]), metric, kind='cubic')
-        #         smooth_metric_lapse.append(f(np.linspace(1, metric.shape[0], num=metric.shape[0]*10)))
-        #     smooth_metric_lapse = np.array(smooth_metric_lapse).T
-        #     changed_metric_lapse = smooth_metric_lapse.tolist()
-        img = augment_frame_metrics_only(img, metrics_lapse, head_count, max_poins_in_plot)
+        changed_metric_lapse = metrics_lapse
+        new_max_points_in_plot = max_poins_in_plot
+        if head_count > 3:
+            transposed_metrics_lapse = np.array(metrics_lapse).T
+            smooth_metric_lapse = []
+            for metric in transposed_metrics_lapse:
+                f = interp1d(np.linspace(1, metric.shape[0]+1, num=metric.shape[0]), metric, kind='cubic')
+                smooth_metric_lapse.append(f(np.linspace(1, metric.shape[0], num=metric.shape[0]*5)))
+            smooth_metric_lapse = np.array(smooth_metric_lapse).T
+            changed_metric_lapse = smooth_metric_lapse.tolist()
+            new_max_points_in_plot = max_poins_in_plot*5
+        img = augment_frame_metrics_only(img, changed_metric_lapse, head_count, new_max_points_in_plot)
         if headcount:
             cv2.putText(img, "Head count: " + str(head_count),
                         (5, 40), cv2.FONT_HERSHEY_TRIPLEX, 2, (60, 20, 220))
@@ -354,12 +356,12 @@ def augment_frame_metrics_only(img, metrics_lapse, head_count, len_img_arr=None,
                 , cord, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
 
     cv2.putText(display_img, "Attention coef: " + str(round(metrics_lapse[-1][0], 2)),
-                (300, 30), cv2.FONT_HERSHEY_TRIPLEX, 1, (60, 20, 220))
+                (300, 60), cv2.FONT_HERSHEY_TRIPLEX, 1, (60, 20, 220))
 
     cv2.putText(display_img, "Arousal coef: " + str(round(metrics_lapse[-1][1], 2)),
-                (1500, 30), cv2.FONT_HERSHEY_TRIPLEX, 1, (60, 20, 220))
+                (1500, 60), cv2.FONT_HERSHEY_TRIPLEX, 1, (60, 20, 220))
 
     cv2.putText(display_img, "Valance coef: " + str(round(metrics_lapse[-1][2], 2)),
-                (800, 30), cv2.FONT_HERSHEY_TRIPLEX, 1, (60, 20, 220))
+                (800, 60), cv2.FONT_HERSHEY_TRIPLEX, 1, (60, 20, 220))
 
     return display_img
