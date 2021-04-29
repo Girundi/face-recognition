@@ -316,6 +316,34 @@ def get_url_by_id_erudite(recording_id):
     res = json.loads(res.text)
     return res['url']
 
+
+def get_emotion_cams():
+    res = requests.get("https://nvr.miem.hse.ru/api/erudite/equipment?type=ONVIF-camera", headers=nvr_key)
+    out = []
+    if res.status_code == 200:
+        res = json.loads(res.text)
+        for cam in res:
+            if 'role' in cam:
+                if cam['role'] == 'emotions':
+                    out.append(cam)
+    return out
+
+
+def get_emotion_recordings(date):
+    cams = get_emotion_cams()
+    out = []
+    for cam in cams:
+        res = requests.get("https://nvr.miem.hse.ru/api/erudite/records" +
+                           "?fromdate=" + date.isoformat() +
+                           "&todate=" + date.isoformat() +
+                           "&room_name=" + cam['room_name'] +
+                           "&ip=" + cam['ip'],
+                           headers=nvr_key)
+        if res.status_code == 200:
+            res = json.loads(res.text)
+            out += res
+    return out
+
 # def get_recording_by_id()
 
 # send_file_with_email('iasizykh@miem.hse.ru', 'Test', 'Test')

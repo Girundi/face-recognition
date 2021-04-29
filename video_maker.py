@@ -356,12 +356,12 @@ def augment_frame_metrics_only(img, metrics_lapse, head_count, len_img_arr=None,
                 , cord, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
 
     cv2.putText(display_img, "Attention coef: " + str(round(metrics_lapse[-1][0], 2)),
-                (300, 60), cv2.FONT_HERSHEY_TRIPLEX, 1, (60, 20, 220))
+                (300, 60), cv2.FONT_HERSHEY_TRIPLEX, 1, (0, 0, 255))
 
     cv2.putText(display_img, "Arousal coef: " + str(round(metrics_lapse[-1][1], 2)),
-                (1500, 60), cv2.FONT_HERSHEY_TRIPLEX, 1, (60, 20, 220))
+                (1500, 60), cv2.FONT_HERSHEY_TRIPLEX, 1, (0, 255, 0))
 
     cv2.putText(display_img, "Valance coef: " + str(round(metrics_lapse[-1][2], 2)),
-                (800, 60), cv2.FONT_HERSHEY_TRIPLEX, 1, (60, 20, 220))
+                (800, 60), cv2.FONT_HERSHEY_TRIPLEX, 1, (255, 255, 255))
 
     return display_img

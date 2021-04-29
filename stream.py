@@ -13,6 +13,7 @@ import argparse
 import uuid
 from dateutil.parser import isoparse
 import video_maker
+from google_drive_downloader import GoogleDriveDownloader as gdd
 
 celery = Celery(__name__)
 celery.config_from_object('celeryconfig')
@@ -61,12 +62,20 @@ def processing_nvr_(data, filename=None, email=None):
     room = data['room']
     date = data['date']
     time = data['time']
+    filename = 'queue/' + str(uuid.uuid4()) + '.mp4'
     try:
-        filename, parent_folder = api.download_video_nvr(room, date, time, need_folder=True)
+        gdd.download_file_from_google_drive(file_id=data['link'].split('/')[-2],
+                                            dest_path=filename,
+                                            unzip=True)
         sleep(35)
     except:
-        msg = f'Searching file in NVR archive something went wrong'
-        return None
+
+        try:
+            filename, parent_folder = api.download_video_nvr(room, date, time, need_folder=True)
+            sleep(35)
+        except:
+            msg = f'Searching file in NVR archive something went wrong'
+            return None
 
     i = 30
     while not os.path.isfile(filename):
@@ -377,32 +386,44 @@ def stream_one_day(date, rooms, n=2):
             break
 
 
-def stream_metrics_only(date, rooms, n=2):
+def stream_metrics_only(date, n=2):
     now = date
-    lessons = []
-    for room in rooms:
-        # if now.hour == 22:
-        fromdate = datetime(year=now.year, month=now.month, day=now.day, hour=9, minute=30)
-        todate = datetime(year=now.year, month=now.month, day=now.day, hour=21, minute=30)
-        # if len(api.get_recordings_erudite(fromdate, todate, room)):
-        lessons += api.get_lessons_erudite(fromdate, todate, room)
-
+    recordings = api.get_emotion_recordings(now)
     p = {}
-    load = min(n, len(lessons))
-    for i in range(load):
-        p[str(i)] = processing_lesson.apply_async(args=[lessons[i]], queue=str(i), priority=i)
+    # load = min(n, len(lessons))
+    for i in range(n):
+        data = {}
+        rec_datetime = datetime.strptime(recordings[i]['date'] + ' ' + recordings[i]['start_time'], '%Y-%m-%d %H:%M:%S.%f')
+        data['room'] = recordings[i]['room_name']
+        data['em'] = True
+        data['recog'] = False
+        data['remember'] = False
+        data['date'] = rec_datetime.strftime('%Y-%m-%d')
+        data['time'] = rec_datetime.strftime('%H:%M')
+        data['link'] = recordings[i]['url']
+        p[str(i)] = processing_nvr_.apply_async(args=[data], queue=str(i), priority=i)
         # processing_lesson(lessons[i])
         sleep(5)
-    j = load
-    while j < len(lessons):
-        for i in range(load):
+    j = n
+    while j < len(recordings):
+        for i in range(n):
             if p[str(i)].status == 'SUCCESS' or p[str(i)].status == 'FAILURE':
-                p[str(i)] = processing_lesson.apply_async(args=[lessons[j]], queue=str(i), priority=i)
+                data = {}
+                rec_datetime = datetime.strptime(recordings[j]['date'] + ' ' + recordings[i]['start_time'],
+                                                 '%Y-%m-%d %H:%M:%S.%f')
+                data['room'] = recordings[j]['room_name']
+                data['em'] = True
+                data['recog'] = False
+                data['remember'] = False
+                data['date'] = rec_datetime.strftime('%Y-%m-%d')
+                data['time'] = rec_datetime.strftime('%H:%M')
+                data['link'] = recordings[j]['url']
+                p[str(i)] = processing_nvr_.apply_async(args=[data], queue=str(i), priority=i)
                 j += 1
-                if j >= len(lessons):
+                if j >= len(recordings):
                     break
                 sleep(5)
-        if j >= len(lessons):
+        if j >= len(recordings):
             break
 
 
@@ -437,7 +458,7 @@ if __name__ == "__main__":
         while True:
             now = datetime.now()
             if date_begin < datetime(now.year, now.month, now.day, 23, 59, 59) - delta:
-                stream_one_day(date_begin, rooms, workers)
+                stream_metrics_only(date_begin, workers)
                 date_begin += delta
             sleep(15*60)
 
