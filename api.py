@@ -330,18 +330,21 @@ def get_emotion_cams():
 
 
 def get_emotion_recordings(date):
+    delta = datetime.timedelta(days=1)
     cams = get_emotion_cams()
     out = []
+    next_day = date + delta
     for cam in cams:
         res = requests.get("https://nvr.miem.hse.ru/api/erudite/records" +
                            "?fromdate=" + date.isoformat() +
-                           "&todate=" + date.isoformat() +
-                           "&room_name=" + cam['room_name'] +
-                           "&ip=" + cam['ip'],
+                           "&room_name=" + cam['room_name'],
                            headers=nvr_key)
         if res.status_code == 200:
             res = json.loads(res.text)
-            out += res
+            for r in res:
+                if 'camera_ip' in r:
+                    if r['camera_ip'] == cam['ip']:
+                        out.append(r)
     return out
 
 # def get_recording_by_id()
