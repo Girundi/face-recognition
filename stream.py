@@ -20,8 +20,8 @@ celery.config_from_object('celeryconfig')
 # celery.control.purge()
 rofl_folder = "14Xsw4xk6vUFINsyy1OH5937Rq98W4JHw"
 
-api.credentials = service_account.Credentials.from_service_account_file(api.SERVICE_ACCOUNT_FILE, scopes=api.SCOPES)
-api.service = build('drive', 'v3', credentials=api.credentials)
+# api.credentials = service_account.Credentials.from_service_account_file(api.SERVICE_ACCOUNT_FILE, scopes=api.SCOPES)
+# api.service = build('drive', 'v3', credentials=api.credentials)
 # with open('Emotions_Project-481579272f6a.json', 'r') as j:
 #     api.data = json.load(j)
 # api.build_service()
@@ -107,12 +107,13 @@ def processing_nvr_(data, filename=None, email=None):
                 return None
 
         # Recording.create(filename, room, date, time, json_filename)
-        vid_link = send_file(json_filename, link='view')
+        # vid_link = send_file(json_filename, link='view')
 
         dt = datetime.strptime(date + ' ' + time, '%Y-%m-%d %H:%M')
         dt = dt.isoformat()
 
-        # api.upload_video_nvr('filename', dt, room, parent_folder)
+        resp, file_id = api.upload_video_nvr('filename', dt, room, 'emotions ' + dt)
+
 
         # if email is not None:
         #     api.send_file_with_email(email, "Processed video",
@@ -296,7 +297,7 @@ def processing_lesson(lesson):
             amount = -int(end_difference.seconds * fps)
             array = array[:amount].copy()
 
-        video = video_maker.optimized_render('video_output', str(uuid.uuid4()) + '.mp4', array, fps, headcount=True)
+        video = video_maker.optimized_render('video_output', str(uuid.uuid4()) + '.mp4', array, fps, [], headcount=True)
         res, file_id = api.upload_video_nvr(video, lesson_datetime.isoformat(), lesson['ruz_auditorium'],
                                             name_on_folder='emotions ' + lesson['course_code'])
         lesson_recordings = api.get_recordings_erudite(lesson_start, lesson_end, lesson['ruz_auditorium'])
@@ -386,39 +387,107 @@ def stream_one_day(date, rooms, n=2):
             break
 
 
+@celery.task(name='stream.processing_recording')
+def processing_recording(recording):
+    """Celery function for the image processing."""
+    room = recording['room_name']
+    rec_datetime = datetime.strptime(recording['date'] + ' ' + recording['start_time'], '%Y-%m-%d %H:%M:%S.%f')
+    date = rec_datetime.strftime('%Y-%m-%d')
+    time = rec_datetime.strftime('%H:%M')
+    filename = 'queue/' + str(uuid.uuid4()) + '.mp4'
+    try:
+        gdd.download_file_from_google_drive(file_id=recording['url'].split('/')[-2],
+                                            dest_path=filename)
+        # api.download_file_from_google_drive(recording['url'].split('/')[-2], filename)
+        sleep(35)
+    except:
+
+        try:
+            filename, parent_folder = api.download_video_nvr(room, date, time, need_folder=True)
+            sleep(35)
+        except:
+            msg = f'Searching file in NVR archive something went wrong'
+            return None, None, recording
+
+    i = 30
+    while not os.path.isfile(filename):
+        sleep(5)
+        i -= 1
+        if i == 0:
+            return None, None, recording
+
+    sleep(60)
+
+    if filename is not None:
+        rofl, fps_factor = load_config()
+        print(filename)
+        print("queue/" + filename.split('/')[1])
+        # json_filename = rofl.json_run("queue", filename.split('/')[1], emotions=data['em'],
+        #                recognize=data['recog'], remember=data['remember'],
+        #                fps_factor=fps_factor)
+        json_filename = rofl.streamline_run('queue', filename.split('/')[1], fps_factor, emotions=True,
+                                            recognize=False, remember=False)
+
+        print(json_filename)
+        with open(json_filename, "r") as f:
+            data = json.load(f)
+        array = data['frames']
+        fps = data['fps']
+
+        sleep(60)
+        i = 30
+        while not os.path.isfile(json_filename):
+            sleep(5)
+            i -= 1
+            if i == 0:
+                return None, None, recording
+
+        # Recording.create(filename, room, date, time, json_filename)
+        # vid_link = send_file(json_filename, link='view')
+
+        dt = datetime.strptime(date + ' ' + time, '%Y-%m-%d %H:%M')
+        dt = dt.isoformat()
+
+        video, metrics_lapse = video_maker.optimized_render('video_output', str(uuid.uuid4()) + '.mp4', array, fps,
+                                                            recording['metrics_lapse'], headcount=True)
+        resp, file_id = api.upload_video_nvr(video, dt, room, 'emotions ' + dt)
+        data = {
+            'emotions_url': resp['file_url']
+        }
+        api.update_url_erudite(recording['id'], data)
+
+        # if email is not None:
+        #     api.send_file_with_email(email, "Processed video",
+        #                              "Thank you, that's your processed video\nHere is your video:\n" + vid_link)
+        os.remove(video)
+        return video, metrics_lapse, recording
+    return None, None, recording
+
+
 def stream_metrics_only(date, n=2):
     now = date
     recordings = api.get_emotion_recordings(now)
+    recordings = sorted(recordings, key=lambda k: k['start_time'])
+    metrics_lapse_buffer = {}
+    for recording in recordings:
+        if recording['room_name'] not in metrics_lapse_buffer:
+            metrics_lapse_buffer[recording['room_name']] = []
     p = {}
     # load = min(n, len(lessons))
     for i in range(n):
-        data = {}
-        rec_datetime = datetime.strptime(recordings[i]['date'] + ' ' + recordings[i]['start_time'], '%Y-%m-%d %H:%M:%S.%f')
-        data['room'] = recordings[i]['room_name']
-        data['em'] = True
-        data['recog'] = False
-        data['remember'] = False
-        data['date'] = rec_datetime.strftime('%Y-%m-%d')
-        data['time'] = rec_datetime.strftime('%H:%M')
-        data['link'] = recordings[i]['url']
-        p[str(i)] = processing_nvr_.apply_async(args=[data], queue=str(i), priority=i)
+        recordings[i]['metrics_lapse'] = metrics_lapse_buffer[recordings[i]['room_name']]
+        p[str(i)] = processing_recording.apply_async(args=[recordings[i]], queue=str(i), priority=i)
         # processing_lesson(lessons[i])
         sleep(5)
     j = n
     while j < len(recordings):
         for i in range(n):
             if p[str(i)].status == 'SUCCESS' or p[str(i)].status == 'FAILURE':
-                data = {}
-                rec_datetime = datetime.strptime(recordings[j]['date'] + ' ' + recordings[i]['start_time'],
-                                                 '%Y-%m-%d %H:%M:%S.%f')
-                data['room'] = recordings[j]['room_name']
-                data['em'] = True
-                data['recog'] = False
-                data['remember'] = False
-                data['date'] = rec_datetime.strftime('%Y-%m-%d')
-                data['time'] = rec_datetime.strftime('%H:%M')
-                data['link'] = recordings[j]['url']
-                p[str(i)] = processing_nvr_.apply_async(args=[data], queue=str(i), priority=i)
+                recordings[j]['metrics_lapse'] = []
+                if p[str(i)].status == 'SUCCESS':
+                    metrics_lapse_buffer[p[str(i)].result[2]['room_name']] == p[str(i)].result[1]
+                    recordings[j]['metrics_lapse'] = metrics_lapse_buffer[recordings[j]['room_name']]
+                p[str(i)] = processing_recording.apply_async(args=[recordings[j]], queue=str(i), priority=i)
                 j += 1
                 if j >= len(recordings):
                     break
@@ -427,12 +496,11 @@ def stream_metrics_only(date, n=2):
             break
 
 
-
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-w', action='store', dest="workers", default=2, type=int)
-    parser.add_argument('-d', action='store', dest='start_date', default='2021-04-17', type=str)
+    parser.add_argument('-d', action='store', dest='start_date', default='2021-04-30', type=str)
     parser.add_argument('-o', action='store', dest='optimized', default=0, type=int)
     args = parser.parse_args()
     date_begin = isoparse(args.start_date)

@@ -137,12 +137,14 @@ def optimized_render(dir, filename, predictions, num_fps, metrics_lapse, headcou
             zeros[np.argwhere(em_labels == p[1])] = 1
             buf = np.add(buf, zeros)
         head_count = len(pred)
-        attention_coef = np.max(buf) / head_count
+        if head_count:
+            attention_coef = np.max(buf) / head_count
 
-        for i in positive_emotions:
-            affection_coef += buf[i] / head_count
-        for i in active_emotions:
-            valence_coef += buf[i] / head_count
+            for i in positive_emotions:
+                affection_coef += buf[i] / head_count
+
+            for i in active_emotions:
+                valence_coef += buf[i] / head_count
 
         metrics_lapse.append([attention_coef, affection_coef, valence_coef])
         if pop_metrics_lapse or len(metrics_lapse) > max_poins_in_plot:

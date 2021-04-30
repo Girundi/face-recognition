@@ -210,12 +210,12 @@ model = "trained_knn_model.clf"
 # rofl.streamline_run('queue', '2020-02-06_09-30_504_26.mp4', 30, emotions=True)
 # print(time.time() - tic)
 
-lesson = api.get_lessons_erudite(datetime.datetime(2021, 4, 20, hour=11, minute=00),
-                                 datetime.datetime(2021, 4, 20, hour=12, minute=30), 305)[0]
-lesson_datetime = datetime.datetime.strptime(lesson['date'] + ' ' + lesson['start_time'], '%Y-%m-%d %H:%M')
-
-lesson_start = datetime.datetime.strptime(lesson['start_time'] + ' ' + lesson['date'], '%H:%M %Y-%m-%d')
-lesson_end = datetime.datetime.strptime(lesson['end_time'] + ' ' + lesson['date'], '%H:%M %Y-%m-%d')
+# lesson = api.get_lessons_erudite(datetime.datetime(2021, 4, 20, hour=11, minute=00),
+#                                  datetime.datetime(2021, 4, 20, hour=12, minute=30), 305)[0]
+# lesson_datetime = datetime.datetime.strptime(lesson['date'] + ' ' + lesson['start_time'], '%Y-%m-%d %H:%M')
+#
+# lesson_start = datetime.datetime.strptime(lesson['start_time'] + ' ' + lesson['date'], '%H:%M %Y-%m-%d')
+# lesson_end = datetime.datetime.strptime(lesson['end_time'] + ' ' + lesson['date'], '%H:%M %Y-%m-%d')
 # start = datetime.datetime(2021, 4, 13, hour=11, minute=0)
 # end = datetime.datetime(2021, 4, 13, hour=12, minute=30)
 #
@@ -261,13 +261,40 @@ lesson_end = datetime.datetime.strptime(lesson['end_time'] + ' ' + lesson['date'
 # stream.processing_lesson(lesson)
 
 
-video = 'video_output/c312b219-40d5-46f7-8a4e-1e731242c829.mp4'
-# res, file_id = api.upload_video_nvr(video, lesson_datetime.isoformat(), lesson['ruz_auditorium'],
-#                                     name_on_folder='emotions ' + lesson['course_code'])
-lesson_recordings = api.get_recordings_erudite(lesson_start, lesson_end, lesson['ruz_auditorium'])
-# for rec in lesson_recordings:
-#     data = {
-#         'emotions_url': res['file_url']
-#     }
-#     api.update_url_erudite(rec['id'], data)
-print(lesson_recordings)
+# video = 'video_output/c312b219-40d5-46f7-8a4e-1e731242c829.mp4'
+# # res, file_id = api.upload_video_nvr(video, lesson_datetime.isoformat(), lesson['ruz_auditorium'],
+# #                                     name_on_folder='emotions ' + lesson['course_code'])
+# lesson_recordings = api.get_recordings_erudite(lesson_start, lesson_end, lesson['ruz_auditorium'])
+# # for rec in lesson_recordings:
+# #     data = {
+# #         'emotions_url': res['file_url']
+# #     }
+# #     api.update_url_erudite(rec['id'], data)
+# print(lesson_recordings)
+
+# recordings = ['recordings/2021-04-20_11-00_305_54.json',
+#               'recordings/2021-04-20_11-30_305_54.json',
+#               'recordings/2021-04-20_12-00_305_54.json']
+# # array, fps = connect_jsons(recordings, True)
+# metrics_lapse = []
+# for i, rec in enumerate(recordings):
+#     with open(rec, "r") as f:
+#         data = json.load(f)
+#     array = data['frames']
+#     fps = data['fps']
+#     video, metrics_lapse = video_maker.optimized_render('video_output', str(i) + '.mp4', array, fps, metrics_lapse,
+#                                                         headcount=True)
+#     print(video)
+
+stream.stream_metrics_only(datetime.datetime(2021, 4, 30), 2)
+# res = api.get_emotion_recordings(datetime.datetime(2021, 4, 30))
+# res[0]['metrics_lapse'] = []
+# stream.processing_recording(res[0])
+
+# with open('recordings/c9cef2c7-5a2b-4423-9b0c-b0739c567d9a.json', "r") as f:
+#     data = json.load(f)
+# array = data['frames']
+# fps = data['fps']
+# video, metrics_lapse = video_maker.optimized_render('video_output', str(uuid.uuid4()) + '.mp4', array, fps,
+#                                                     [], headcount=True)
+

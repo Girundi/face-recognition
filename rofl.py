@@ -75,7 +75,7 @@ class ROFL:
         cap = cv2.VideoCapture(in_dir + '/' + video)
         fps = cap.get(cv2.CAP_PROP_FPS)
         # cap = cv2.VideoCapture(0)
-        ret, frame = cap.read()
+        # ret, frame = cap.read()
         new_fps = fps / fps_factor
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         # t = time.time()
@@ -111,7 +111,6 @@ class ROFL:
                     s = t % 60
                     print("Approximately " + str(m) + " minutes and " + str(s) + " seconds to make predictions")
                 print(str(i / frame_count * 100) + "% of video is done")
-
             i += 1
         out_array = []
         if recognize and emotions:
