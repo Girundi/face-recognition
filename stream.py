@@ -20,11 +20,11 @@ celery.config_from_object('celeryconfig')
 # celery.control.purge()
 rofl_folder = "14Xsw4xk6vUFINsyy1OH5937Rq98W4JHw"
 
-# api.credentials = service_account.Credentials.from_service_account_file(api.SERVICE_ACCOUNT_FILE, scopes=api.SCOPES)
-# api.service = build('drive', 'v3', credentials=api.credentials)
-# with open('Emotions_Project-481579272f6a.json', 'r') as j:
-#     api.data = json.load(j)
-# api.build_service()
+api.credentials = service_account.Credentials.from_service_account_file(api.SERVICE_ACCOUNT_FILE, scopes=api.SCOPES)
+api.service = build('drive', 'v3', credentials=api.credentials)
+with open('Emotions_Project-481579272f6a.json', 'r') as j:
+    api.data = json.load(j)
+api.build_service()
 GOOGLE_CLIENT_ID = api.GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET = api.GOOGLE_CLIENT_SECRET
 GOOGLE_DISCOVERY_URL = (
@@ -395,19 +395,19 @@ def processing_recording(recording):
     date = rec_datetime.strftime('%Y-%m-%d')
     time = rec_datetime.strftime('%H:%M')
     filename = 'queue/' + str(uuid.uuid4()) + '.mp4'
+    # try:
+    #     # gdd.download_file_from_google_drive(file_id=recording['url'].split('/')[-2],
+    #     #                                     dest_path=filename, unzip=True)
+    #     api.download_file_from_google_drive(recording['url'].split('/')[-2], filename)
+    #     sleep(35)
+    # except:
+
     try:
-        gdd.download_file_from_google_drive(file_id=recording['url'].split('/')[-2],
-                                            dest_path=filename)
-        # api.download_file_from_google_drive(recording['url'].split('/')[-2], filename)
+        filename = api.download_video_nvr_via_link(recording['url'], filename)
         sleep(35)
     except:
-
-        try:
-            filename, parent_folder = api.download_video_nvr(room, date, time, need_folder=True)
-            sleep(35)
-        except:
-            msg = f'Searching file in NVR archive something went wrong'
-            return None, None, recording
+        msg = f'Searching file in NVR archive something went wrong'
+        return None, None, recording
 
     i = 30
     while not os.path.isfile(filename):
@@ -427,8 +427,15 @@ def processing_recording(recording):
         #                fps_factor=fps_factor)
         json_filename = rofl.streamline_run('queue', filename.split('/')[1], fps_factor, emotions=True,
                                             recognize=False, remember=False)
+        retries = 0
+        while json_filename is None and retries < 7:
+            json_filename = rofl.streamline_run('queue', filename.split('/')[1], fps_factor, emotions=True,
+                                                recognize=False, remember=False)
+            retries += 1
 
         print(json_filename)
+        if json_filename is None:
+            return None, recording['metrics_lapse'], recording
         with open(json_filename, "r") as f:
             data = json.load(f)
         array = data['frames']
@@ -461,7 +468,7 @@ def processing_recording(recording):
         #                              "Thank you, that's your processed video\nHere is your video:\n" + vid_link)
         os.remove(video)
         return video, metrics_lapse, recording
-    return None, None, recording
+    return None, recording['metrics_lapse'], recording
 
 
 def stream_metrics_only(date, n=2):
@@ -485,7 +492,7 @@ def stream_metrics_only(date, n=2):
             if p[str(i)].status == 'SUCCESS' or p[str(i)].status == 'FAILURE':
                 recordings[j]['metrics_lapse'] = []
                 if p[str(i)].status == 'SUCCESS':
-                    metrics_lapse_buffer[p[str(i)].result[2]['room_name']] == p[str(i)].result[1]
+                    metrics_lapse_buffer[p[str(i)].result[2]['room_name']] = p[str(i)].result[1]
                     recordings[j]['metrics_lapse'] = metrics_lapse_buffer[recordings[j]['room_name']]
                 p[str(i)] = processing_recording.apply_async(args=[recordings[j]], queue=str(i), priority=i)
                 j += 1

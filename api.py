@@ -102,6 +102,19 @@ def download_video_nvr(room, date, time, filename=None, need_folder=False):
         return filename
 
 
+def download_video_nvr_via_link(link, filename):
+    link = link.split('/')[-2]
+    request = service.files().get_media(fileId=link)
+    fh = io.FileIO(filename, 'wb')
+    downloader = MediaIoBaseDownload(fh, request)
+    done = False
+    while not done:
+        status, done = downloader.next_chunk()
+        print("Download process is %d%%. " % int(status.progress() * 100))
+
+    return filename
+
+
 def get_parent_folder(room, date, time):
     try:
         rooms = pickle.loads(open("rooms.pickle", "rb").read())
@@ -330,14 +343,15 @@ def get_emotion_cams():
 
 
 def get_emotion_recordings(date):
-    delta = datetime.timedelta(days=1)
+    delta = datetime.timedelta(hours=23, minutes=59)
     cams = get_emotion_cams()
     out = []
     next_day = date + delta
     for cam in cams:
         res = requests.get("https://nvr.miem.hse.ru/api/erudite/records" +
                            "?fromdate=" + date.isoformat() +
-                           "&room_name=" + cam['room_name'],
+                           "&room_name=" + cam['room_name'] +
+                           "&todate=" + next_day.isoformat(),
                            headers=nvr_key)
         if res.status_code == 200:
             res = json.loads(res.text)

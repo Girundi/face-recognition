@@ -112,6 +112,8 @@ class ROFL:
                     print("Approximately " + str(m) + " minutes and " + str(s) + " seconds to make predictions")
                 print(str(i / frame_count * 100) + "% of video is done")
             i += 1
+        if i / frame_count * 100 < 90:
+            return None
         out_array = []
         if recognize and emotions:
             for em, face in zip(em_predictions, face_predictions):
