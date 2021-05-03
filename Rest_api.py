@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, send_from_directory
 from flask_restful import Api, Resource
 from datetime import datetime, timedelta
 import configparser
@@ -17,15 +17,16 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import json
 from stream import json_recall, stream_background
+from flask_cors import CORS
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='./build', static_url_path='/')
 api = Api(app)
 app.config.update(BEDUG=True, TESTING=True,
                   ALLOWED_EXTENSIONS=['mp4'], LOGFILE='app.log',
                   UPLOAD_FOLDER='queue', RESULT_FOLDER='video_output',
                   CELERY_BROKER_URL='redis://localhost:6379',
                   CELERY_RESULT_BACKEND='redis://localhost:6379')
-
+CORS(app)
 celery = Celery(app.name)
 celery.config_from_object('celeryconfig')
 
@@ -193,6 +194,25 @@ def api_():
                 return "Bad request", 400
     return "Access denied", 500
 
+
+@app.route('/')
+def index():
+    return app.send_static_file('index.html')
+
+
+@app.route('/build/<file>')
+def build(file):
+    return send_from_directory('build', file)
+
+
+@app.route('/build/src/<file>')
+def src(file):
+    return send_from_directory('build/src', file)
+
+
+@app.route('/build/public/<file>')
+def pub(file):
+    return send_from_directory('build/public', file)
 
 # @celery.task(name='stream.json_recall')
 # def json_recall(in_dir, recordings, time, room):

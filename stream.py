@@ -14,6 +14,7 @@ import uuid
 from dateutil.parser import isoparse
 import video_maker
 from google_drive_downloader import GoogleDriveDownloader as gdd
+import subprocess
 
 celery = Celery(__name__)
 celery.config_from_object('celeryconfig')
@@ -507,7 +508,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-w', action='store', dest="workers", default=2, type=int)
-    parser.add_argument('-d', action='store', dest='start_date', default='2021-04-30', type=str)
+    parser.add_argument('-d', action='store', dest='start_date', default='2021-04-20', type=str)
     parser.add_argument('-o', action='store', dest='optimized', default=0, type=int)
     args = parser.parse_args()
     date_begin = isoparse(args.start_date)
@@ -527,6 +528,9 @@ if __name__ == "__main__":
     # data['time'] = time_begin.strftime('%H:%M')
     # processing_nvr_(data)
     rooms = ['305', '306', '504']
+    # for i in range(workers):
+    #     str_command = ['celery', 'worker', '-A', 'stream.celery', '--loglevel=info', '-n', str(i), '-Q', str(i), '-P', 'eventlet']
+    #     p = subprocess.Popen(str_command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, env=os.environ)
     if is_optimized:
         stream_optimized(rooms, workers)
     else:
