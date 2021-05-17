@@ -153,15 +153,15 @@ def optimized_render(dir, filename, predictions, num_fps, metrics_lapse, headcou
         img = np.zeros((400, 1920, 3), dtype=np.uint8)
         changed_metric_lapse = metrics_lapse
         new_max_points_in_plot = max_poins_in_plot
-        if head_count > 3:
-            transposed_metrics_lapse = np.array(metrics_lapse).T
-            smooth_metric_lapse = []
-            for metric in transposed_metrics_lapse:
-                f = interp1d(np.linspace(1, metric.shape[0]+1, num=metric.shape[0]), metric, kind='cubic')
-                smooth_metric_lapse.append(f(np.linspace(1, metric.shape[0], num=metric.shape[0]*5)))
-            smooth_metric_lapse = np.array(smooth_metric_lapse).T
-            changed_metric_lapse = smooth_metric_lapse.tolist()
-            new_max_points_in_plot = max_poins_in_plot*5
+        # if head_count > 3:
+        #     transposed_metrics_lapse = np.array(metrics_lapse).T
+        #     smooth_metric_lapse = []
+        #     for metric in transposed_metrics_lapse:
+        #         f = interp1d(np.linspace(1, metric.shape[0]+1, num=metric.shape[0]), metric, kind='cubic')
+        #         smooth_metric_lapse.append(f(np.linspace(1, metric.shape[0], num=metric.shape[0]*5)))
+        #     smooth_metric_lapse = np.array(smooth_metric_lapse).T
+        #     changed_metric_lapse = smooth_metric_lapse.tolist()
+        #     new_max_points_in_plot = max_poins_in_plot*5
         img = augment_frame_metrics_only(img, changed_metric_lapse, head_count, new_max_points_in_plot)
         if headcount:
             cv2.putText(img, "Head count: " + str(head_count),
