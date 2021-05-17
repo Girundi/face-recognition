@@ -111,6 +111,16 @@ class Recording:
         )
         db.commit()
 
+    @staticmethod
+    def update(room_num, rec_date, rec_time, json):
+        db = get_db()
+        db.execute(
+            "UPDATE recording SET json = ? WHERE room_num = ? AND rec_date = ? AND rec_time = ?",
+            (json, room_num, rec_date, rec_time),
+        )
+        db.commit()
+
+
 
 class Room:
     def __init__(self, room_num, google_folder, tag):

@@ -452,8 +452,11 @@ def processing_recording(recording):
             i -= 1
             if i == 0:
                 return None, None, recording, 'JSON file was not created'
-
-        Recording.create(filename, room, date, time, json.dumps(data))
+        rec = Recording.get(room, date, time)
+        if rec is not None:
+            Recording.update(room, date, time, json.dumps(data))
+        else:
+            Recording.create(filename, room, date, time, json.dumps(data))
         # vid_link = send_file(json_filename, link='view')
 
         dt = datetime.strptime(date + ' ' + time, '%Y-%m-%d %H:%M')
