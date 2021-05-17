@@ -132,13 +132,26 @@ class Record(Resource):
                 print(rec)
                 if rec is None:
                     return "Video not found", 404
-                rec = rec.json
+                rec = json.loads(rec.json)
                 return rec, 200
             else:
                 db = sqlite3.connect('sqlite_db')
                 table = pd.read_sql_query("SELECT * from recording", db)
                 table = table.to_dict()
                 return table, 200
+        except:
+            return "Server error", 500
+
+    def delete(self, room_num, date, time):
+        try:
+            # date = datetime.datetime.strptime(date, '%Y-%m-%d')
+            # time = datetime.datetime.strptime(time, '%H:%M')
+            try:
+                Recording.delete(room_num, date, time)
+            except:
+                return "Video not found", 404
+            # rec = json.loads(rec.json)
+            return 'Recording deleted', 200
         except:
             return "Server error", 500
 

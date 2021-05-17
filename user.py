@@ -102,6 +102,15 @@ class Recording:
         db = get_db()
         return pd.read_sql_query("SELECT * from recording", db)
 
+    @staticmethod
+    def delete(room_num, rec_date, rec_time):
+        db = get_db()
+        db.execute(
+            "DELETE FROM recording WHERE room_num = ? AND rec_date = ? AND rec_time = ?",
+            (room_num, rec_date, rec_time),
+        )
+        db.commit()
+
 
 class Room:
     def __init__(self, room_num, google_folder, tag):

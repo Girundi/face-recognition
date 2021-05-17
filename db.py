@@ -5,14 +5,22 @@ from flask import current_app, g
 from flask.cli import with_appcontext
 import os
 
+
 def get_db():
-    if "db" not in g:
-        g.db = sqlite3.connect(
+    try:
+        if "db" not in g:
+            g.db = sqlite3.connect(
+                "sqlite_db", detect_types=sqlite3.PARSE_DECLTYPES
+            )
+            g.db.row_factory = sqlite3.Row
+            return g.db
+    except:
+        base = sqlite3.connect(
             "sqlite_db", detect_types=sqlite3.PARSE_DECLTYPES
         )
-        g.db.row_factory = sqlite3.Row
+        base.row_factory = sqlite3.Row
 
-    return g.db
+        return base
 
 
 def close_db(e=None):

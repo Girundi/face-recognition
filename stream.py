@@ -106,8 +106,11 @@ def processing_nvr_(data, filename=None, email=None):
             i -= 1
             if i == 0:
                 return None
+        with open('recordings/2021-04-13_11-00_305_54.json', "r") as f:
+            json_data = json.load(f)
+        json_data = json.dumps(data)
 
-        # Recording.create(filename, room, date, time, json_filename)
+        Recording.create(filename, room, date, time, json_data)
         # vid_link = send_file(json_filename, link='view')
 
         dt = datetime.strptime(date + ' ' + time, '%Y-%m-%d %H:%M')
@@ -392,7 +395,7 @@ def stream_one_day(date, rooms, n=2):
 def processing_recording(recording):
     """Celery function for the image processing."""
     room = recording['room_name']
-    rec_datetime = datetime.strptime(recording['date'] + ' ' + recording['start_time'], '%Y-%m-%d %H:%M:%S.%f')
+    rec_datetime = datetime.strptime(recording['date'] + ' ' + recording['start_time'], '%Y-%m-%d %H:%M:%S')
     date = rec_datetime.strftime('%Y-%m-%d')
     time = rec_datetime.strftime('%H:%M')
     filename = 'queue/' + str(uuid.uuid4()) + '.mp4'
@@ -408,14 +411,14 @@ def processing_recording(recording):
         sleep(35)
     except:
         msg = f'Searching file in NVR archive something went wrong'
-        return None, None, recording
+        return None, None, recording, msg
 
     i = 30
     while not os.path.isfile(filename):
         sleep(5)
         i -= 1
         if i == 0:
-            return None, None, recording
+            return None, None, recording, 'Video file was not created'
 
     sleep(60)
 
@@ -436,7 +439,7 @@ def processing_recording(recording):
 
         print(json_filename)
         if json_filename is None:
-            return None, recording['metrics_lapse'], recording
+            return None, recording['metrics_lapse'], recording, 'JSON file was not created'
         with open(json_filename, "r") as f:
             data = json.load(f)
         array = data['frames']
@@ -448,9 +451,9 @@ def processing_recording(recording):
             sleep(5)
             i -= 1
             if i == 0:
-                return None, None, recording
+                return None, None, recording, 'JSON file was not created'
 
-        # Recording.create(filename, room, date, time, json_filename)
+        Recording.create(filename, room, date, time, json.dumps(data))
         # vid_link = send_file(json_filename, link='view')
 
         dt = datetime.strptime(date + ' ' + time, '%Y-%m-%d %H:%M')
@@ -468,40 +471,44 @@ def processing_recording(recording):
         #     api.send_file_with_email(email, "Processed video",
         #                              "Thank you, that's your processed video\nHere is your video:\n" + vid_link)
         os.remove(video)
-        return video, metrics_lapse, recording
-    return None, recording['metrics_lapse'], recording
+        os.remove(filename)
+        return video, metrics_lapse, recording, 'SUCCESS'
+    return None, recording['metrics_lapse'], recording, 'Video file was not created'
 
 
 def stream_metrics_only(date, n=2):
     now = date
     recordings = api.get_emotion_recordings(now)
-    recordings = sorted(recordings, key=lambda k: k['start_time'])
-    metrics_lapse_buffer = {}
-    for recording in recordings:
-        if recording['room_name'] not in metrics_lapse_buffer:
-            metrics_lapse_buffer[recording['room_name']] = []
-    p = {}
-    # load = min(n, len(lessons))
-    for i in range(n):
-        recordings[i]['metrics_lapse'] = metrics_lapse_buffer[recordings[i]['room_name']]
-        p[str(i)] = processing_recording.apply_async(args=[recordings[i]], queue=str(i), priority=i)
-        # processing_lesson(lessons[i])
-        sleep(5)
-    j = n
-    while j < len(recordings):
+
+    if recordings:
+        recordings = sorted(recordings, key=lambda k: k['start_time'])
+        metrics_lapse_buffer = {}
+        for recording in recordings:
+            if recording['room_name'] not in metrics_lapse_buffer:
+                metrics_lapse_buffer[recording['room_name']] = []
+        p = {}
+        # load = min(n, len(lessons))
         for i in range(n):
-            if p[str(i)].status == 'SUCCESS' or p[str(i)].status == 'FAILURE':
-                recordings[j]['metrics_lapse'] = []
-                if p[str(i)].status == 'SUCCESS':
-                    metrics_lapse_buffer[p[str(i)].result[2]['room_name']] = p[str(i)].result[1]
-                    recordings[j]['metrics_lapse'] = metrics_lapse_buffer[recordings[j]['room_name']]
-                p[str(i)] = processing_recording.apply_async(args=[recordings[j]], queue=str(i), priority=i)
-                j += 1
-                if j >= len(recordings):
-                    break
-                sleep(5)
-        if j >= len(recordings):
-            break
+            recordings[i]['metrics_lapse'] = metrics_lapse_buffer[recordings[i]['room_name']]
+            p[str(i)] = processing_recording.apply_async(args=[recordings[i]], queue=str(i), priority=i)
+            # processing_lesson(lessons[i])
+            sleep(5)
+        j = n
+        while j < len(recordings):
+            for i in range(n):
+                if p[str(i)].status == 'SUCCESS' or p[str(i)].status == 'FAILURE':
+                    recordings[j]['metrics_lapse'] = []
+                    if p[str(i)].status == 'SUCCESS':
+                        metrics_lapse_buffer[p[str(i)].result[2]['room_name']] = p[str(i)].result[1]
+                        recordings[j]['metrics_lapse'] = metrics_lapse_buffer[recordings[j]['room_name']]
+                    p[str(i)] = processing_recording.apply_async(args=[recordings[j]], queue=str(i), priority=i)
+                    j += 1
+                    if j >= len(recordings):
+                        break
+                    sleep(5)
+            if j >= len(recordings):
+                break
+    return 0
 
 
 if __name__ == "__main__":
@@ -528,9 +535,9 @@ if __name__ == "__main__":
     # data['time'] = time_begin.strftime('%H:%M')
     # processing_nvr_(data)
     rooms = ['305', '306', '504']
-    # for i in range(workers):
-    #     str_command = ['celery', 'worker', '-A', 'stream.celery', '--loglevel=info', '-n', str(i), '-Q', str(i), '-P', 'eventlet']
-    #     p = subprocess.Popen(str_command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, env=os.environ)
+    for i in range(workers):
+        str_command = ['celery', 'worker', '-A', 'stream.celery', '--loglevel=info', '-n', str(i), '-Q', str(i), '-P', 'eventlet']
+        p = subprocess.Popen(str_command, stdout=subprocess.PIPE, stdin=subprocess.PIPE, env=os.environ)
     if is_optimized:
         stream_optimized(rooms, workers)
     else:

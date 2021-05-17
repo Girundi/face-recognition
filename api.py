@@ -20,6 +20,7 @@ import json
 import datetime
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
+from time import sleep
 
 
 SCOPES = ['https://www.googleapis.com/auth/drive',
@@ -331,7 +332,16 @@ def get_url_by_id_erudite(recording_id):
 
 
 def get_emotion_cams():
-    res = requests.get("https://nvr.miem.hse.ru/api/erudite/equipment?type=ONVIF-camera", headers=nvr_key)
+    data = {"type": "ONVIF-camera"}
+    # res = requests.get("https://nvr.miem.hse.ru/api/erudite/equipment", headers=nvr_key, params=data)
+    session = requests.Session()
+    retry = requests.packages.urllib3.util.retry.Retry(connect=3, backoff_factor=0.5)
+    adapter = requests.adapters.HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+
+    res = session.get("https://nvr.miem.hse.ru/api/erudite/equipment", headers=nvr_key, params=data)
+
     out = []
     if res.status_code == 200:
         res = json.loads(res.text)
@@ -348,10 +358,14 @@ def get_emotion_recordings(date):
     out = []
     next_day = date + delta
     for cam in cams:
-        res = requests.get("https://nvr.miem.hse.ru/api/erudite/records" +
-                           "?fromdate=" + date.isoformat() +
-                           "&room_name=" + cam['room_name'] +
-                           "&todate=" + next_day.isoformat(),
+        data = {
+            "fromdate": date.strftime('%Y-%m-%d') + " 09:00",
+            "todate": next_day.strftime('%Y-%m-%d') + " 20:30",
+            "room_name": cam['room_name'],
+            "camera_ip": cam['ip']
+        }
+        res = requests.get("https://nvr.miem.hse.ru/api/erudite/records",
+                           params=data,
                            headers=nvr_key)
         if res.status_code == 200:
             res = json.loads(res.text)
