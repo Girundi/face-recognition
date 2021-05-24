@@ -339,8 +339,11 @@ def get_emotion_cams():
     adapter = requests.adapters.HTTPAdapter(max_retries=retry)
     session.mount('http://', adapter)
     session.mount('https://', adapter)
-
-    res = session.get("https://nvr.miem.hse.ru/api/erudite/equipment", headers=nvr_key, params=data)
+    try:
+        res = session.get("https://nvr.miem.hse.ru/api/erudite/equipment", headers=nvr_key, params=data)
+    except requests.exceptions.ConnectionError:
+        sleep(60*2)
+        res = session.get("https://nvr.miem.hse.ru/api/erudite/equipment", headers=nvr_key, params=data)
 
     out = []
     if res.status_code == 200:

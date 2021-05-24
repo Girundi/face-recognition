@@ -1,5 +1,5 @@
 from flask import Flask, request, send_from_directory
-from flask_restful import Api, Resource
+from flask_restful import Api, Resource, reqparse
 from datetime import datetime, timedelta
 import configparser
 from user import Recording, Api_key
@@ -18,6 +18,7 @@ from googleapiclient.discovery import build
 import json
 from stream import json_recall, stream_background
 from flask_cors import CORS
+import werkzeug
 
 app = Flask(__name__, static_folder='./build', static_url_path='/')
 api = Api(app)
@@ -156,6 +157,32 @@ class Record(Resource):
             return "Server error", 500
 
 
+class Face(Resource):
+
+    def get(self):
+        try:
+            dirs = [x[0].split('\\')[-1] for x in os.walk('known_faces')]
+
+            return {"known_faces": dirs}, 200
+        except:
+            return "Server error", 500
+
+    def post(self, name):
+        try:
+            parse = reqparse.RequestParser()
+            parse.add_argument('file', type=werkzeug.datastructures.FileStorage, location='files')
+            args = parse.parse_args()
+            image_file = args['file']
+            path = 'known_faces/' + name
+            if not os.path.isdir(path):
+                os.mkdir(path)
+            image_file.save(path + '/' + str(uuid.uuid4()) + '.jpg')
+            return "Face added to database"
+        except:
+            return "Server error", 500
+
+
+
 @app.route("/api/plot", methods=['PUT'])
 def api_():
     if 'key' in request.headers:
@@ -243,12 +270,13 @@ def pub(file):
 
 api.add_resource(Config, '/config',
                  '/config/<int:id_>',
-
                  '/config/<float:confidence_threshold>/<float:top_k>/<float:nms_threshold>/' +
                  '<float:keep_top_k>/<float:vis_thres>/<string:network>/<float:distance_threshold>/' +
                  '<float:samples>/<float:eps>/<float:fps_factor>')
 api.add_resource(Record, '/record',
                  '/record/<string:room_num>/<string:date>/<string:time>')
+api.add_resource(Face, '/face',
+                 '/face/<string:name>')
 if __name__ == "__main__":
     if not os.path.isdir('video_output'):
         os.mkdir('video_output')
