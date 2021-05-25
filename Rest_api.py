@@ -138,7 +138,7 @@ class Record(Resource):
             else:
                 db = sqlite3.connect('sqlite_db')
                 table = pd.read_sql_query("SELECT * from recording", db)
-                table = table.to_dict()
+                table = table.drop('json', axis=1).to_dict()
                 return table, 200
         except:
             return "Server error", 500
